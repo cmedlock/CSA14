@@ -1,0 +1,442 @@
+// -*- C++ -*-
+//
+// Package:    Test/MiniAnalyzer
+// Class:      MiniAnalyzer
+// 
+/**\class MiniAnalyzer MiniAnalyzer.cc Test/MiniAnalyzer/plugins/MiniAnalyzer.cc
+
+ Description: [one line class summary]
+
+ Implementation:
+     [Notes on implementation]
+*/
+//
+// Original Author:  Catherine Aiko Medlock
+//         Created:  Tue, 22 Jul 2014 11:26:17 GMT
+//
+//
+
+// system include files
+#include <memory>
+
+// user include files
+#include "FWCore/Framework/interface/Frameworkfwd.h"
+#include "FWCore/Framework/interface/EDAnalyzer.h"
+
+#include "FWCore/Framework/interface/Event.h"
+#include "FWCore/Framework/interface/MakerMacros.h"
+
+#include "FWCore/ParameterSet/interface/ParameterSet.h"
+
+#include "DataFormats/VertexReco/interface/VertexFwd.h"
+#include "DataFormats/VertexReco/interface/Vertex.h"
+#include "DataFormats/PatCandidates/interface/Muon.h"
+#include "DataFormats/PatCandidates/interface/MET.h"
+#include "DataFormats/PatCandidates/interface/PackedCandidate.h"
+
+#include "DataFormats/Math/interface/deltaR.h"
+
+#include <TSystem.h>                // interface to OS
+#include <TFile.h>                  // file handle class
+#include <TTree.h>                  // class to access ntuples
+#include <TVector2.h>               // 2D vector class
+
+//
+// class declaration
+//
+
+class selectWm : public edm::EDAnalyzer {
+   public:
+      explicit selectWm(const edm::ParameterSet&);
+      ~selectWm();
+
+      static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
+
+
+   private:
+      virtual void beginJob() override;
+      virtual void analyze(const edm::Event&, const edm::EventSetup&) override;
+      virtual void endJob() override;
+
+      //virtual void beginRun(edm::Run const&, edm::EventSetup const&) override;
+      //virtual void endRun(edm::Run const&, edm::EventSetup const&) override;
+      //virtual void beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) override;
+      //virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) override;
+
+      // ----------member data ---------------------------
+      edm::EDGetTokenT<reco::VertexCollection> vtxToken_;
+      edm::EDGetTokenT<pat::MuonCollection> muonToken_;
+      edm::EDGetTokenT<pat::METCollection> metToken_;
+};
+
+//
+// constants, enums and typedefs
+//
+
+typedef ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> > LorentzVector;
+
+//
+// static data member definitions
+//
+
+//--------------------------------------------------------------------------------------------------------------
+// Settings 
+//============================================================================================================== 
+
+const Double_t PT_CUT    = 20;
+const Double_t ETA_CUT   = 2.4;
+const Double_t MUON_MASS = 0.105658369;
+
+Double_t nsel=0, nselvar=0;
+
+const TString outputDir = TString("Wmunu");
+const TString ntupDir = outputDir + TString("/ntuples");
+TString outfilename = ntupDir + TString("/") + outputDir + TString("_select.root");
+TFile *outFile = new TFile(outfilename,"RECREATE");
+TTree *outTree = new TTree("Events","Events");
+
+//
+// Declare output ntuple variables
+//
+// Initialze everything to -10 so that it is obvious if there is only 1 muon
+//
+Float_t genVPt0=-10, genVPhi0=-10;
+Float_t genVPt1=-10, genVPhi1=-10;
+Float_t scale1fb;
+Float_t pfMET, pfMETPhi;
+Float_t genMET, genMETPhi;
+Int_t   q0=-10, q1=-10;
+Int_t   dummynEvents=0, nEvents=0;
+Float_t Mu0pt=-10, Mu0eta=-10, Mu0phi=-10; // Will be used in lep0
+Float_t Mu1pt=-10, Mu1eta=-10, Mu1phi=-10; // Will be used in lep1
+LorentzVector *lep0=0, *lep1=0;
+///// muon specific /////
+Float_t pfChIso0=-10, pfGamIso0=-10, pfNeuIso0=-10;
+Float_t pfChIso1=-10, pfGamIso1=-10, pfNeuIso1=-10;
+Bool_t  isLooseMuon0=kFALSE, isSoftMuon0=kFALSE, isTightMuon0=kFALSE;
+Bool_t  isLooseMuon1=kFALSE, isSoftMuon1=kFALSE, isTightMuon1=kFALSE;
+
+// Compute MC event weight_sel per 1/fb
+Double_t weight = 1;
+//const Double_t xsec = 1;
+//if(xsec>0) weight = 1000.*xsec/(Double_t)eventTree->GetEntries();
+
+//
+// constructors and destructor
+//
+selectWm::selectWm(const edm::ParameterSet& iConfig):
+   vtxToken_(consumes<reco::VertexCollection>(iConfig.getParameter<edm::InputTag>("vertices"))),
+   muonToken_(consumes<pat::MuonCollection>(iConfig.getParameter<edm::InputTag>("muons"))),
+   metToken_(consumes<pat::METCollection>(iConfig.getParameter<edm::InputTag>("mets")))
+{
+   //now do what ever initialization is needed
+
+}
+
+
+selectWm::~selectWm()
+{
+ 
+   // do anything here that needs to be done at desctruction time
+   // (e.g. close files, deallocate resources etc.)
+
+}
+
+
+//
+// member functions
+//
+
+// ------------ method called for each event  ------------
+void
+selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
+{
+   using namespace edm;
+
+   nEvents++;
+
+   Handle<reco::VertexCollection> vertices;
+   iEvent.getByToken(vtxToken_, vertices);
+   // good vertex requirement
+   if (vertices->empty()) return; // skip the event if no PV found
+   const reco::Vertex &PV = vertices->front();
+
+   Handle<pat::MuonCollection> muons;
+   iEvent.getByToken(muonToken_, muons);
+   if(muons->size()==0) return;   // skip the event if no muons found
+   unsigned int idxMu0=-1, idxMu1=-1;
+   float maxMupt=-1 , secondmaxMupt=-1;
+   // find the muon with the highest pt
+   for (unsigned int jMuon=0;jMuon < muons->size();jMuon++) {
+     const pat::Muon &mu = (*muons)[jMuon];
+     if     (maxMupt==-1)                    { maxMupt=mu.pt(); idxMu0=jMuon; }
+     else if(maxMupt!=-1 && mu.pt()>maxMupt) { maxMupt=mu.pt(); idxMu0=jMuon; }
+   }
+   const pat::Muon &Mu0 = (*muons)[idxMu0];
+   q0           = Mu0.charge();
+   Mu0pt        = Mu0.pt();
+   Mu0eta       = Mu0.eta();
+   Mu0phi       = Mu0.phi();
+   pfChIso0     = Mu0.chargedHadronIso();
+   pfGamIso0    = Mu0.photonIso();
+   pfNeuIso0    = Mu0.neutralHadronIso();
+   isLooseMuon0 = Mu0.isLooseMuon();
+   isSoftMuon0  = Mu0.isSoftMuon(PV);
+   isTightMuon0 = Mu0.isTightMuon(PV);
+   // get mother particle information
+   const reco::GenParticle* gen = Mu0.genLepton();
+   Bool_t foundGenV0 = kFALSE; // some events do not have a generated Z or W, this protects against a seg fault
+   if(gen!=NULL) {
+     const reco::Candidate* genCand = gen;
+     while(genCand!=NULL && genCand->numberOfMothers()==1) {
+       genCand = genCand->mother(0);
+//       if      (fabs(genCand->pdgId())==23) std::cout << "mother particle of first lepton is a Z with pt " << genCand->pt() << std::endl;
+//       else if (fabs(genCand->pdgId())==24) std::cout << "mother particle of first lepton is a W with pt " << genCand->pt() << std::endl;
+//       else                                 std::cout << "pdgID of mother particle is " << fabs(genCand->pdgId()) << std::endl;
+       if( (  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV0 ) foundGenV0=kTRUE;
+       genVPt0  = genCand->pt();
+       genVPhi0 = genCand->phi();
+     }
+     // mother particle should always be either a Z or a W
+     // if it isn't, trace back to the first daughter particle that is either a Z or a W
+     if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && foundGenV0) {
+//       std::cout << "***ERROR - pdgID of mother particle is " << fabs(genCand->pdgId()) << std::endl;
+//       std::cout << "********tracing back to daughter particles..." << std::endl;
+       while( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) ) {
+         genCand = genCand->daughter(0);
+//         if      (fabs(genCand->pdgId())==23) std::cout << "daughter particle is a Z with pt " << genCand->pt() << std::endl;
+//         else if (fabs(genCand->pdgId())==24) std::cout << "daughter particle is a W with pt " << genCand->pt() << std::endl;
+//         else                                 std::cout << "pdgID of mother particle is " << fabs(genCand->pdgId()) << std::endl;
+         genVPt0  = genCand->pt();
+         genVPhi0 = genCand->phi();
+       } // end of while
+     } // end of if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) )
+     else if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV0) {
+//       std::cout << "***ERROR - pdgID of mother particle is " << fabs(genCand->pdgId()) << " and no Z or W found" << std::endl;
+//       std::cout << "********resetting genVPt0 and genVPhi0..." << std::endl;
+       genVPt0  = -10;
+       genVPhi0 = -10;
+     } // end of else if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && foundGenV==kFALSE)
+   } // end of gen!=NULL
+//   std::cout << "Mu0pt is " << Mu0pt<< " and genVPt0 is " << genVPt0 << std::endl;
+   // if there are > 1 muons, find the 2 with the highest pt's
+   if(muons->size() > 1) {
+     for (unsigned int kMuon=0; kMuon < muons->size();kMuon++) {
+       const pat::Muon &mu = (*muons)[kMuon];
+       if(kMuon==idxMu0)                                                      continue;
+       else if(kMuon!=idxMu0 && secondmaxMupt==-1)                          { secondmaxMupt=mu.pt(); idxMu1=kMuon; }
+       else if(kMuon!=idxMu0 && secondmaxMupt!=-1 && mu.pt()>secondmaxMupt) { secondmaxMupt=mu.pt(); idxMu1=kMuon; }
+     }
+     const pat::Muon &Mu1 = (*muons)[idxMu1];
+     q1           = Mu1.charge();
+     Mu1pt        = Mu1.pt();
+     Mu1eta       = Mu1.eta();
+     Mu1phi       = Mu1.phi();
+     pfChIso1     = Mu1.chargedHadronIso();
+     pfGamIso1    = Mu1.photonIso();
+     pfNeuIso1    = Mu1.neutralHadronIso();
+     isLooseMuon1 = Mu1.isLooseMuon();
+     isSoftMuon1  = Mu1.isSoftMuon(PV);
+     isTightMuon1 = Mu1.isTightMuon(PV);
+     // get mother particle information
+     const reco::GenParticle* gen = Mu1.genLepton();
+     Bool_t foundGenV1 = kFALSE; // some events do not have a generated Z or W, this protects against a seg fault
+     if(gen!=NULL) {
+       const reco::Candidate* genCand = gen;
+       while(genCand!=NULL && genCand->numberOfMothers()==1) {
+         genCand = genCand->mother(0);
+//         if      (fabs(genCand->pdgId())==23) std::cout << "mother particle of second lepton is a Z with pt " << genCand->pt() << std::endl;
+//         else if (fabs(genCand->pdgId())==24) std::cout << "mother particle of second lepton is a W with pt " << genCand->pt() << std::endl;
+//         else                                 std::cout << "pdgID of mother particle is " << fabs(genCand->pdgId()) << std::endl;
+         if( (  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV1 ) foundGenV1=kTRUE;
+         genVPt1  = genCand->pt();
+         genVPhi1 = genCand->phi();
+       }
+       // mother particle should always be either a Z or a W
+       // if it isn't, trace back to the first daughter particle that is either a Z or a W
+       if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && foundGenV1) {
+//         std::cout << "***ERROR - pdgID of mother particle is " << fabs(genCand->pdgId()) << std::endl;
+//         std::cout << "********tracing back to daughter particles..." << std::endl;
+         while( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) ) {
+           genCand = genCand->daughter(0);
+//           if      (fabs(genCand->pdgId())==23) std::cout << "daughter particle is a Z with pt " << genCand->pt() << std::endl;
+//           else if (fabs(genCand->pdgId())==24) std::cout << "daughter particle is a W with pt " << genCand->pt() << std::endl;
+//           else                                 std::cout << "pdgID of mother particle is " << fabs(genCand->pdgId()) << std::endl;
+           genVPt1  = genCand->pt();
+           genVPhi1 = genCand->phi();
+         } // end of while
+       } // end of if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) )
+       else if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV1) {
+//         std::cout << "***ERROR - pdgID of mother particle is " << fabs(genCand->pdgId()) << " and no Z or W found" << std::endl;
+//         std::cout << "********resetting genVPt1 and genVPhi1..." << std::endl;
+         genVPt1  = -10;
+         genVPhi1 = -10;
+       } // end of else if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && foundGenV==kFALSE)
+     } // end of gen!=NULL
+   }
+
+   nsel    += weight;
+   nselvar += weight*weight;
+   scale1fb = weight;
+
+   LorentzVector vLep0(Mu0pt, Mu0eta, Mu0phi, MUON_MASS); lep0 = &vLep0;
+   LorentzVector vLep1(Mu1pt, Mu1eta, Mu1phi, MUON_MASS); lep1 = &vLep1;
+
+   edm::Handle<pat::METCollection> mets;
+   iEvent.getByToken(metToken_, mets);
+   const pat::MET &met = mets->front();
+
+   pfMET      = met.pt();
+   pfMETPhi   = met.phi();
+   genMET     = met.genMET()->pt();
+   genMETPhi  = met.genMET()->phi();
+
+   //
+   // Fill tree
+   //
+   outTree->Fill();
+
+#ifdef THIS_IS_AN_EVENT_EXAMPLE
+   Handle<ExampleData> pIn;
+   iEvent.getByLabel("example",pIn);
+#endif
+   
+#ifdef THIS_IS_AN_EVENTSETUP_EXAMPLE
+   ESHandle<SetupData> pSetup;
+   iSetup.get<SetupRecord>().get(pSetup);
+#endif
+}
+
+
+// ------------ method called once each job just before starting event loop  ------------
+void 
+selectWm::beginJob()
+{
+   // Create output directory
+//   gSystem->mkdir(outputDir,kTRUE); // AIKO - THIS NEEDS TO BE FIXED (NOT URGENT)
+//   gSystem->mkdir(ntupDir,kTRUE);
+
+  //
+  // Set up output ntuple
+  //
+
+  outTree->Branch("genVPt0",   &genVPt0,      "genVPt0/F");      // GEN boson pT  (signal MC)  (mother of first lepton )
+  outTree->Branch("genVPhi0",  &genVPhi0,     "genVPhi0/F");     // GEN boson phi (signal MC)  (mother of first lepton )
+  outTree->Branch("genVPt1",   &genVPt1,      "genVPt1/F");      // GEN boson pT  (signal MC)  (mother of second lepton)
+  outTree->Branch("genVPhi1",  &genVPhi1,     "genVPhi1/F");     // GEN boson phi (signal MC)  (mother of second lepton)
+  outTree->Branch("scale1fb",  &scale1fb,     "scale1fb/F");     // event weight per 1/fb (MC)
+  outTree->Branch("pfmet",     &pfMET,        "pfmet/F");        // pfMET
+  outTree->Branch("pfmetPhi",  &pfMETPhi,     "pfmetPhi/F");     // phi(pfMET)
+  outTree->Branch("genmet",    &genMET,       "genmet/F");       // genMET
+  outTree->Branch("genmetPhi", &genMETPhi,    "genmetPhi/F");    // phi(genMET)
+  outTree->Branch("q0",        &q0,           "q0/I");           // lepton charge (first lepton )
+  outTree->Branch("q1",        &q1,           "q1/I");           // lepton charge (second lepton)
+  outTree->Branch("nEvents",   &dummynEvents, "nEvents/I");      // events in MC file
+  outTree->Branch("lep0", "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &lep0);   // lepton 4-vector (first lepton )
+  outTree->Branch("lep1", "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &lep1);   // lepton 4-vector (second lepton)
+  ///// muon specific /////
+  outTree->Branch("pfChIso0",     &pfChIso0,    "pfChIso0/F");      // PF charged hadron isolation of lepton (first lepton )
+  outTree->Branch("pfGamIso0",    &pfGamIso0,   "pfGamIso0/F");     // PF photon isolation of lepton         (first lepton )
+  outTree->Branch("pfNeuIso0",    &pfNeuIso0,   "pfNeuIso0/F");     // PF neutral hadron isolation of lepton (first lepton )
+  outTree->Branch("pfChIso1",     &pfChIso1,    "pfChIso1/F");      // PF charged hadron isolation of lepton (second lepton)
+  outTree->Branch("pfGamIso1",    &pfGamIso1,   "pfGamIso1/F");     // PF photon isolation of lepton         (second lepton)
+  outTree->Branch("pfNeuIso1",    &pfNeuIso1,   "pfNeuIso1/F");     // PF neutral hadron isolation of lepton (second lepton)
+  outTree->Branch("isLooseMuon0", &isLooseMuon0, "isLooseMuon0/O"); // loose muon ID (first lepton )
+  outTree->Branch("isSoftMuon0",  &isSoftMuon0,  "isSoftMuon0/O");  // soft  muon ID (first lepton )
+  outTree->Branch("isTightMuon0", &isTightMuon0, "isTightMuon0/O"); // tight muon ID (first lepton )
+  outTree->Branch("isLooseMuon1", &isLooseMuon1, "isLooseMuon1/O"); // loose muon ID (second lepton)
+  outTree->Branch("isSoftMuon1",  &isSoftMuon1,  "isSoftMuon1/O");  // soft  muon ID (second lepton)
+  outTree->Branch("isTightMuon1", &isTightMuon1, "isTightMuon1/O"); // tight muon ID (second lepton)
+
+}
+
+// ------------ method called once each job just after ending the event loop  ------------
+void 
+selectWm::endJob() 
+{
+   std::cout << nsel << " +/- " << sqrt(nselvar) << " per 1/fb" << std::endl;
+   std::cout << "endJob: nEvents is " << nEvents << std::endl;
+
+   genVPt0   = -1; genVPhi0 = -1;
+   genVPt1   = -1; genVPhi1 = -1;
+   scale1fb  = -1;
+   pfMET     = -1;
+   pfMETPhi  = -1;
+   genMET    = -1;
+   genMETPhi = -1;
+   q0        = -1; q1 = -1;
+   dummynEvents = nEvents;
+   LorentzVector dummyLep(-1, -1, -1, -1);
+   lep0      = &dummyLep;
+   lep1      = &dummyLep;
+   pfChIso0  = -1; pfGamIso0 = -1; pfNeuIso0 = -1;
+   pfChIso1  = -1; pfGamIso1 = -1; pfNeuIso1 = -1;
+   isLooseMuon0 = kFALSE; isSoftMuon0 = kFALSE; isTightMuon0 = kFALSE;
+   isLooseMuon1 = kFALSE; isSoftMuon0 = kFALSE; isTightMuon0 = kFALSE;
+   
+   outTree->Fill();
+   std::cout << "outTree has " << outTree->GetEntries() << " entries" << std::endl;
+   outFile->Write();
+   outFile->Close();
+
+  //--------------------------------------------------------------------------------------------------------------
+  // Output
+  //==============================================================================================================
+
+  std::cout << "*" << std::endl;
+  std::cout << "* SUMMARY" << std::endl;
+  std::cout << "*--------------------------------------------------" << std::endl;
+  std::cout << "W -> mu nu" << std::endl;
+  std::cout << " pT > " << PT_CUT << std::endl;
+  std::cout << " |eta| < " << ETA_CUT << std::endl;
+  std::cout << std::endl;
+
+  std::cout << std::endl;
+  std::cout << "  <> Output saved in " << outputDir << "/" << std::endl;
+  std::cout << std::endl;
+}
+
+// ------------ method called when starting to processes a run  ------------
+/*
+void 
+selectWm::beginRun(edm::Run const&, edm::EventSetup const&)
+{
+}
+*/
+
+// ------------ method called when ending the processing of a run  ------------
+/*
+void 
+selectWm::endRun(edm::Run const&, edm::EventSetup const&)
+{
+}
+*/
+
+// ------------ method called when starting to processes a luminosity block  ------------
+/*
+void 
+selectWm::beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
+{
+}
+*/
+
+// ------------ method called when ending the processing of a luminosity block  ------------
+/*
+void 
+selectWm::endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
+{
+}
+*/
+
+// ------------ method fills 'descriptions' with the allowed parameters for the module  ------------
+void
+selectWm::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+  //The following says we do not know what parameters are allowed so do no validation
+  // Please change this to state exactly what you do use, even if it is no parameters
+  edm::ParameterSetDescription desc;
+  desc.setUnknown();
+  descriptions.addDefault(desc);
+}
+
+//define this as a plug-in
+DEFINE_FWK_MODULE(selectWm);
