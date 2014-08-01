@@ -14,7 +14,7 @@ The selection code used to make the flat ntuples are here. The cuts (pT, eta) ap
 This folder contains the configuration files needed to run over the samples and create the ntuples. The general syntax is
 
 cmsenv
-cmsRun **configuration file** [ inputFiles_load=**text file with list of sample files** ]
+cmsRun **<configuration file>** [ inputFiles_load=**<text file with list of sample files>** ]
 
 To run over just one file at a time, enter the file name in the configuration file and don't use the "inputFiles_load" option.
 
