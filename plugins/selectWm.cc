@@ -90,7 +90,7 @@ const Double_t MUON_MASS = 0.105658369;
 
 Double_t nselWm=0, nselWmvar=0;
 
-TString outFileWmname = TString("Wmunu_p_select.root");
+TString outFileWmname = TString("WplusToMuNu_CT10_13TeV-powheg-pythia8_SELECT.root");
 TFile *outFileWm = new TFile(outFileWmname,"RECREATE");
 TTree *outTree_Wm = new TTree("Events","Events");
 

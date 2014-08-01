@@ -90,9 +90,7 @@ const Double_t ELE_MASS  = 0.000511;
 
 Double_t nsel=0, nselvar=0;
 
-const TString outputDir = TString("Wenu_p");
-const TString ntupDir = outputDir + TString("/ntuples");
-TString outfilename = ntupDir + TString("/") + outputDir + TString("_select.root");
+TString outfilename = TString("Wenu_p_select.root");
 TFile *outFile = new TFile(outfilename,"RECREATE");
 TTree *outTree = new TTree("Events","Events");
 
@@ -389,9 +387,9 @@ selectWe::endJob()
    genVPt0       = -1; genVPhi0 = -1;
    genVPt1       = -1; genVPhi1 = -1;
    scale1fb      = -1;
-   vtype1pfMET.Set(-1,-1);
-   vrawpfMET.Set(-1,-1);
-   vgenMET.Set(-1,-1);
+   vtype1pfMET.Set(-1.0,-1.0);
+   vrawpfMET.Set(-1.0,-1.0);
+   vgenMET.Set(-1.0,-1.0);
    q0            = -1; q1 = -1;
    nEvents   = dummynEvents;
    LorentzVector dummyLep(-1, -1, -1, -1);
@@ -423,7 +421,7 @@ selectWe::endJob()
   std::cout << std::endl;
 
   std::cout << std::endl;
-  std::cout << "  <> Output saved in " << outputDir << "/" << std::endl;
+  std::cout << "  <> Output saved in " << outfilename << "/" << std::endl;
   std::cout << std::endl;
 }
 

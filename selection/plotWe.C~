@@ -1,0 +1,193 @@
+#include <iostream>
+
+#include <TFile.h>
+#include <TTree.h>
+#include <TH1D.h>
+#include <TLegend.h>
+#include <TCanvas.h>
+#include <TVector2.h>
+#include "Math/LorentzVector.h"
+
+typedef ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> > LorentzVector;
+
+// Convert int to binary value
+bool Convert(unsigned int val,bool print=kFALSE)
+{
+   unsigned int mask = 1 << (sizeof(int) * 8 - 1);
+   bool lastDigit;
+   for(int i = 0; i < sizeof(int) * 8; i++)
+   {
+      if( (val & mask) == 0 ) {
+        if(print) cout << "0";
+        lastDigit=0;
+      } else {
+        if(print) cout << "1";
+        lastDigit=1;
+      }
+      mask  >>= 1;
+   }
+   if(print) cout << endl;
+   return lastDigit;
+}
+
+void plotWe(const TString inputFileName = "./Wenu_p/ntuples/Wenu_p_select_MERGED.root") {
+
+  //
+  // Setup input ntuple
+  //
+  TFile* inputFile = new TFile(inputFileName);
+  TTree* inputTree = (TTree*)inputFile->Get("Events");
+
+  //--------------------------------------------------------------------------------------------------------------
+  // Settings 
+  //============================================================================================================== 
+
+  const Double_t PT_CUT   = 25;
+  const Double_t ETA_CUT  = 2.5;
+//  const Double_t ELE_MASS = 0.000511;
+  
+  const Double_t ECAL_GAP_LOW  = 1.4442;
+  const Double_t ECAL_GAP_HIGH = 1.566;
+
+  //
+  // Declare variables to read in ntuple
+  //
+  TVector2 *vtype1pfMET=0, *vrawpfMET=0, *vgenMET=0;  Int_t nEvents;
+  LorentzVector *lep0=0, *lep1=0;
+  LorentzVector *sc0=0, *sc1=0;
+  Float_t isLooseEle0=0, isTightEle0=0;
+  Float_t isLooseEle1=0, isTightEle1=0;
+
+  inputTree->SetBranchAddress("vtype1pfmet",  &vtype1pfMET); // type-1 corrected pf MET
+  inputTree->SetBranchAddress("vrawpfmet",    &vrawpfMET);   // raw pf MET
+  inputTree->SetBranchAddress("vgenmet",      &vgenMET);     // generated MET
+  inputTree->SetBranchAddress("nEvents",      &nEvents);
+  inputTree->SetBranchAddress("lep0",         &lep0);
+  inputTree->SetBranchAddress("lep1",         &lep1);
+  inputTree->SetBranchAddress("sc0",          &sc0);
+  inputTree->SetBranchAddress("sc1",          &sc1);
+  inputTree->SetBranchAddress("isLooseEle0",  &isLooseEle0);
+  inputTree->SetBranchAddress("isTightEle0",  &isTightEle0);
+  inputTree->SetBranchAddress("isLooseEle1",  &isLooseEle1);
+  inputTree->SetBranchAddress("isTightEle1",  &isTightEle1);
+           
+  //
+  // Declare histograms
+  //
+  // would be good if could implement the MET corrections into this macro
+  TH1D *hele0pt = new TH1D("hele0pt","pT of Electron Supercluster Passing Tight Selection",100,0,400);
+        hele0pt->GetYaxis()->SetTitle("Events / 4 GeV");
+        hele0pt->GetYaxis()->SetTitleOffset(1.5);
+        hele0pt->GetXaxis()->SetTitle("pT_{e} [GeV]");
+        hele0pt->GetXaxis()->SetTitleOffset(1.2);
+  TH1D *hele0eta = new TH1D("hele0eta","Eta of Electron Supercluster Passing Tight Selection",100,-3.0,3.0);
+        hele0eta->GetYaxis()->SetTitle("Events / 0.6");
+        hele0eta->GetYaxis()->SetTitleOffset(1.5);
+        hele0eta->GetXaxis()->SetTitle("#eta_{e}");
+        hele0eta->GetXaxis()->SetTitleOffset(1.2);
+  TH1D *hele0phi = new TH1D("hele0phi","Phi of Electron Supercluster Passing Tight Selection",100,-3.5,3.5);
+        hele0phi->GetYaxis()->SetTitle("Events / 0.7");
+        hele0phi->GetYaxis()->SetTitleOffset(1.5);
+        hele0phi->GetXaxis()->SetTitle("#phi_{e}");
+        hele0phi->GetXaxis()->SetTitleOffset(1.2);
+
+  //
+  // Make legend
+  //
+  TLegend *leg = new TLegend(0.5847701,0.7542373,0.862069,0.8919492,NULL,"brNDC");
+  leg->SetTextFont(62);
+  leg->SetTextSize(0.03330866);
+  leg->SetLineColor(1);
+  leg->SetLineStyle(1);
+  leg->SetLineWidth(1);
+  leg->SetFillColor(0);
+  leg->SetFillStyle(1001);
+  leg->SetBorderSize(0);
+
+//  leg->AddEntry(hpfmet,"Type 1 Corrected MET","l");
+//  leg->AddEntry(hgenmet,"Generated MET","l");
+
+  Int_t totalEvents=0, nsel=0;
+
+  for(int jentry=0;jentry<inputTree->GetEntries();jentry++) {
+    inputTree->GetEntry(jentry);
+    totalEvents += nEvents;
+
+    //
+    // SELECTION PROCEDURE:
+    //  (1) Look for 1 good electron matched to trigger
+    //  (2) Reject event if another electron is present passing looser cuts
+    //
+    Bool_t passSel=kFALSE, passSel0=kFALSE, passSel1=kFALSE;
+    Bool_t inECALgap0=kFALSE, inECALgap1=kFALSE;
+    Int_t nLooseLep=0;
+    if(  !Convert(isLooseEle0) && Convert(isTightEle0)  ) cout << "hi aiko" << endl;
+    if(  !Convert(isLooseEle1) && Convert(isTightEle1)  ) cout << "hi keiko" << endl;
+    if(  fabs(sc0->Eta())>=ECAL_GAP_LOW && fabs(sc0->Eta())<=ECAL_GAP_HIGH  ) inECALgap0=kTRUE; // check ECAL gap
+    if(  fabs(sc1->Eta())>=ECAL_GAP_LOW && fabs(sc1->Eta())<=ECAL_GAP_HIGH  ) inECALgap1=kTRUE;
+    if(  !inECALgap0 && fabs(sc0->Eta())<=2.5 && sc0->Pt()>=20 && Convert(isLooseEle0)  ) nLooseLep++;
+    if(  !inECALgap1 && fabs(sc1->Eta())<=2.5 && sc1->Pt()>=20 && Convert(isLooseEle1)  ) nLooseLep++;
+    if(  nLooseLep>1  ) continue; // event not interesting if there are multiple electrons passing the loose selection
+//    cout << Convert(isLooseEle0) << ", " << Convert(isTightEle0) << ", " << Convert(isLooseEle1) << ", " << Convert(isTightEle1) << endl;
+    if(  !inECALgap0 && fabs(sc0->Eta())<=ETA_CUT && sc0->Pt()>=PT_CUT && Convert(isTightEle0)  ) passSel0=kTRUE;
+    if(  !inECALgap1 && fabs(sc1->Eta())<=ETA_CUT && sc1->Pt()>=PT_CUT && Convert(isTightEle1)  ) passSel1=kTRUE;
+/*
+    if(  passSel0 && passSel1  ) {
+      cout << "***ERROR - 2 electrons passing the tight selection" << endl;
+      cout << "isLooseEle0 is " << isLooseEle0 << endl;
+      cout << inECALgap0 << ", " << fabs(sc0->Eta()) << ", " << sc0->Pt() << endl;
+      cout << "Convert(isLooseEle0,kTRUE) is " << Convert(isLooseEle0,kTRUE) << endl;
+      cout << "isTightEle0 is " << isTightEle0 << endl;
+      cout << "Convert(isTightEle0,kTRUE) is " << Convert(isTightEle0,kTRUE) << endl;
+      cout << endl;
+      cout << "isLooseEle1 is " << isLooseEle1 << endl;
+      cout << inECALgap1 << ", " << fabs(sc1->Eta()) << ", " << sc1->Pt() << endl;
+      cout << "Convert(isLooseEle1,kTRUE) is " << Convert(isLooseEle1,kTRUE) << endl;
+      cout << "isTightEle1 is " << isTightEle1 << endl;
+      cout << "Convert(isTightEle1,kTRUE) is " << Convert(isTightEle1,kTRUE) << endl;
+      cout << endl;
+      cout << endl;
+    }
+*/
+    if(  passSel0 != passSel1  ) passSel=kTRUE;
+    if(  !passSel  ) continue; // event not interesting if there is no electron passing the tight selection
+    nsel++;
+
+    //
+    // Fill histograms
+    //
+    if(passSel0 && !passSel1) {
+      hele0pt->Fill(sc0->Pt());
+      hele0eta->Fill(sc0->Eta());
+      hele0phi->Fill(sc0->Phi());
+    } else if (!passSel0 && passSel1) {
+      hele0pt->Fill(sc1->Pt());
+      hele0eta->Fill(sc1->Eta());
+      hele0phi->Fill(sc1->Phi());
+    }
+  }
+
+  cout << "totalEvents is " << totalEvents << endl;
+  cout << "nsel is " << nsel << endl;
+
+  //
+  // Save plots
+  //
+  TCanvas* cele0pt = new TCanvas();
+  cele0pt->cd();
+  cele0pt->SetLogy();
+  hele0pt->Draw();
+  cele0pt->Print("ele0pt.png");
+  cele0pt->Close();
+  TCanvas* cele0eta = new TCanvas();
+  cele0eta->cd();
+  hele0eta->Draw();
+  cele0eta->Print("ele0eta.png");
+  cele0eta->Close();
+  TCanvas* cele0phi = new TCanvas();
+  cele0phi->cd();
+  hele0phi->Draw();
+  cele0phi->Print("ele0phi.png");
+  cele0phi->Close();
+
+}

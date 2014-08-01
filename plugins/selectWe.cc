@@ -90,7 +90,7 @@ const Double_t ELE_MASS  = 0.000511;
 
 Double_t nsel=0, nselvar=0;
 
-TString outfilename = TString("Wenu_p_select.root");
+TString outfilename = TString("WplusToENu_CT10_13TeV-powheg-pythia8_SELECT.root");
 TFile *outFile = new TFile(outfilename,"RECREATE");
 TTree *outTree = new TTree("Events","Events");
 
