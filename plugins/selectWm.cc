@@ -58,8 +58,8 @@ class selectWm : public edm::EDAnalyzer {
       virtual void analyze(const edm::Event&, const edm::EventSetup&) override;
       virtual void endJob() override;
 
-      //virtual void beginRun(edm::Run const&, edm::EventSetup const&) override;
-      //virtual void endRun(edm::Run const&, edm::EventSetup const&) override;
+      virtual void beginRun(edm::Run const&, edm::EventSetup const&) override;
+      virtual void endRun(edm::Run const&, edm::EventSetup const&) override;
       //virtual void beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) override;
       //virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) override;
 
@@ -90,14 +90,15 @@ const Double_t MUON_MASS = 0.105658369;
 
 Double_t nselWm=0, nselWmvar=0;
 
-TString outFileWmname = TString("WplusToMuNu_CT10_13TeV-powheg-pythia8_SELECT.root");
-TFile *outFileWm = new TFile(outFileWmname,"RECREATE");
-TTree *outTree_Wm = new TTree("Events","Events");
+TString outFilename_Wm = TString("Wmunu_select.root");
+TFile *outFile_Wm = new TFile();
+TTree *outTree_Wm = new TTree();
 
 //
 // Declare output ntuple variables
 //
-// Initialze everything to -10 so that it is obvious if there is only 1 muon
+// Initialize everything to -10 so that it is obvious if an object (such
+// as a Z or W generator level mother particle) doesn't exist
 //
 Int_t   nVtxWm;
 Float_t genVPt0Wm=-10, genVPhi0Wm=-10;
@@ -168,7 +169,7 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    if(muons->size()==0) return;   // skip the event if no muons found
    unsigned int idxMu0=-1, idxMu1=-1;
    float maxMupt=-1 , secondmaxMupt=-1;
-   // find the muon with the highest pt
+   // find the muon with the highest pT
    for (unsigned int jMuon=0;jMuon < muons->size();jMuon++) {
      const pat::Muon &mu = (*muons)[jMuon];
      if     (maxMupt==-1)                    { maxMupt=mu.pt(); idxMu0=jMuon; }
@@ -192,9 +193,6 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      const reco::Candidate* genCand = gen;
      while(genCand!=NULL && genCand->numberOfMothers()==1) {
        genCand = genCand->mother(0);
-//       if      (fabs(genCand->pdgId())==23) std::cout << "mother particle of first lepton is a Z with pt " << genCand->pt() << std::endl;
-//       else if (fabs(genCand->pdgId())==24) std::cout << "mother particle of first lepton is a W with pt " << genCand->pt() << std::endl;
-//       else                                 std::cout << "pdgID of mother particle is " << fabs(genCand->pdgId()) << std::endl;
        if( (  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV0 ) foundGenV0=kTRUE;
        genVPt0Wm  = genCand->pt();
        genVPhi0Wm = genCand->phi();
@@ -202,26 +200,19 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      // mother particle should always be either a Z or a W
      // if it isn't, trace back to the first daughter particle that is either a Z or a W
      if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && foundGenV0) {
-//       std::cout << "***ERROR - pdgID of mother particle is " << fabs(genCand->pdgId()) << std::endl;
-//       std::cout << "********tracing back to daughter particles..." << std::endl;
        while( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) ) {
          genCand = genCand->daughter(0);
-//         if      (fabs(genCand->pdgId())==23) std::cout << "daughter particle is a Z with pt " << genCand->pt() << std::endl;
-//         else if (fabs(genCand->pdgId())==24) std::cout << "daughter particle is a W with pt " << genCand->pt() << std::endl;
-//         else                                 std::cout << "pdgID of mother particle is " << fabs(genCand->pdgId()) << std::endl;
          genVPt0Wm  = genCand->pt();
          genVPhi0Wm = genCand->phi();
-       } // end of while
-     } // end of if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) )
+       }
+     }
+     // if there is no mother particle that is a Z or a W, mark this by saving the mother particle pT and phi both as -10
      else if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV0) {
-//       std::cout << "***ERROR - pdgID of mother particle is " << fabs(genCand->pdgId()) << " and no Z or W found" << std::endl;
-//       std::cout << "********resetting genVPt0Wm and genVPhi0Wm..." << std::endl;
        genVPt0Wm  = -10;
        genVPhi0Wm = -10;
-     } // end of else if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && foundGenV==kFALSE)
-   } // end of gen!=NULL
-//   std::cout << "Mu0pt is " << Mu0pt<< " and genVPt0Wm is " << genVPt0Wm << std::endl;
-   // if there are > 1 muons, find the 2 with the highest pt's
+     }
+   }
+   // if there is > 1 muon, find the one with the second highest pT
    if(muons->size() > 1) {
      for (unsigned int kMuon=0; kMuon < muons->size();kMuon++) {
        const pat::Muon &mu = (*muons)[kMuon];
@@ -247,9 +238,6 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
        const reco::Candidate* genCand = gen;
        while(genCand!=NULL && genCand->numberOfMothers()==1) {
          genCand = genCand->mother(0);
-//         if      (fabs(genCand->pdgId())==23) std::cout << "mother particle of second lepton is a Z with pt " << genCand->pt() << std::endl;
-//         else if (fabs(genCand->pdgId())==24) std::cout << "mother particle of second lepton is a W with pt " << genCand->pt() << std::endl;
-//         else                                 std::cout << "pdgID of mother particle is " << fabs(genCand->pdgId()) << std::endl;
          if( (  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV1 ) foundGenV1=kTRUE;
          genVPt1Wm  = genCand->pt();
          genVPhi1Wm = genCand->phi();
@@ -257,24 +245,18 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
        // mother particle should always be either a Z or a W
        // if it isn't, trace back to the first daughter particle that is either a Z or a W
        if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && foundGenV1) {
-//         std::cout << "***ERROR - pdgID of mother particle is " << fabs(genCand->pdgId()) << std::endl;
-//         std::cout << "********tracing back to daughter particles..." << std::endl;
          while( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) ) {
            genCand = genCand->daughter(0);
-//           if      (fabs(genCand->pdgId())==23) std::cout << "daughter particle is a Z with pt " << genCand->pt() << std::endl;
-//           else if (fabs(genCand->pdgId())==24) std::cout << "daughter particle is a W with pt " << genCand->pt() << std::endl;
-//           else                                 std::cout << "pdgID of mother particle is " << fabs(genCand->pdgId()) << std::endl;
            genVPt1Wm  = genCand->pt();
            genVPhi1Wm = genCand->phi();
-         } // end of while
-       } // end of if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) )
+         }
+       }
+       // if there is no mother particle that is a Z or a W, mark this by saving the mother particle pT and phi both as -10
        else if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV1) {
-//         std::cout << "***ERROR - pdgID of mother particle is " << fabs(genCand->pdgId()) << " and no Z or W found" << std::endl;
-//         std::cout << "********resetting genVPt1Wm and genVPhi1Wm..." << std::endl;
          genVPt1Wm  = -10;
          genVPhi1Wm = -10;
-       } // end of else if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && foundGenV==kFALSE)
-     } // end of gen!=NULL
+       }
+     }
    }
 
    nselWm    += weightWm;
@@ -298,10 +280,6 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      rawpfMETpxWm -= pf.px();
      rawpfMETpyWm -= pf.py();
    }
-
-//   pat::MET::UncorrectionType ix;
-//   ix=pat::MET::uncorrALL;
-//   pfMETPhi   = met.uncorrectedPhi(ix);
 
    vtype1pfMETWm.Set(met.px(),met.py());
    vrawpfMETWm.Set(rawpfMETpxWm,rawpfMETpyWm);
@@ -329,7 +307,7 @@ void
 selectWm::beginJob()
 {
    // Create output directory
-//   gSystem->mkdir(outputDir,kTRUE); // AIKO - THIS NEEDS TO BE FIXED (NOT URGENT)
+//   gSystem->mkdir(outputDir,kTRUE);
 //   gSystem->mkdir(ntupDir,kTRUE);
 
   //
@@ -370,6 +348,9 @@ selectWm::beginJob()
 void 
 selectWm::endJob() 
 {
+
+   // The only information in the last entry of the tree is the total number of events
+   // that were processed (not the same as the total number of events selected).
    std::cout << nselWm << " +/- " << sqrt(nselWmvar) << " per 1/fb" << std::endl;
    std::cout << "endJob: nEventsWm is " << nEventsWm << std::endl;
 
@@ -392,8 +373,6 @@ selectWm::endJob()
    
    outTree_Wm->Fill();
    std::cout << "outTree_Wm has " << outTree_Wm->GetEntries() << " entries" << std::endl;
-   outFileWm->Write();
-   outFileWm->Close();
 
   //--------------------------------------------------------------------------------------------------------------
   // Output
@@ -408,25 +387,29 @@ selectWm::endJob()
   std::cout << std::endl;
 
   std::cout << std::endl;
-  std::cout << "  <> Output saved in " << outFileWmname << "/" << std::endl;
+  std::cout << "  <> Output saved in " << outFilename_Wm << "/" << std::endl;
   std::cout << std::endl;
 }
 
 // ------------ method called when starting to processes a run  ------------
-/*
+
 void 
 selectWm::beginRun(edm::Run const&, edm::EventSetup const&)
 {
+  outFile_Wm = new TFile(outFilename_Wm,"RECREATE");
+  outTree_Wm = new TTree("Events","Events");
 }
-*/
+
 
 // ------------ method called when ending the processing of a run  ------------
-/*
+
 void 
 selectWm::endRun(edm::Run const&, edm::EventSetup const&)
 {
+  outFile_Wm->Write();
+  outFile_Wm->Close();
 }
-*/
+
 
 // ------------ method called when starting to processes a luminosity block  ------------
 /*
