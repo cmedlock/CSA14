@@ -58,8 +58,8 @@ class selectWm : public edm::EDAnalyzer {
       virtual void analyze(const edm::Event&, const edm::EventSetup&) override;
       virtual void endJob() override;
 
-      virtual void beginRun(edm::Run const&, edm::EventSetup const&) override;
-      virtual void endRun(edm::Run const&, edm::EventSetup const&) override;
+      //virtual void beginRun(edm::Run const&, edm::EventSetup const&) override;
+      //virtual void endRun(edm::Run const&, edm::EventSetup const&) override;
       //virtual void beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) override;
       //virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) override;
 
@@ -314,6 +314,9 @@ selectWm::beginJob()
   // Set up output ntuple
   //
 
+  outFile_Wm = new TFile(outFilename_Wm,"RECREATE");
+  outTree_Wm = new TTree("Events","Events");
+
   outTree_Wm->Branch("nVtx",        &nVtxWm,         "nVtx/I");     // number of vertices
   outTree_Wm->Branch("genVPt0",     &genVPt0Wm,      "genVPt0/F");  // GEN boson pT  (signal MC)  (mother of first lepton )
   outTree_Wm->Branch("genVPhi0",    &genVPhi0Wm,     "genVPhi0/F"); // GEN boson phi (signal MC)  (mother of first lepton )
@@ -372,7 +375,11 @@ selectWm::endJob()
    isLooseMuon1 = kFALSE; isSoftMuon0 = kFALSE; isTightMuon0 = kFALSE;
    
    outTree_Wm->Fill();
-   std::cout << "outTree_Wm has " << outTree_Wm->GetEntries() << " entries" << std::endl;
+
+   std::cout << nselWm << " +/- " << sqrt(nselWmvar) << " per 1/fb" << std::endl;
+   std::cout << "endJob: nEventsWm is " << nEventsWm << std::endl;
+   outFile_Wm->Write();
+   outFile_Wm->Close();
 
   //--------------------------------------------------------------------------------------------------------------
   // Output
@@ -392,24 +399,20 @@ selectWm::endJob()
 }
 
 // ------------ method called when starting to processes a run  ------------
-
+/*
 void 
 selectWm::beginRun(edm::Run const&, edm::EventSetup const&)
 {
-  outFile_Wm = new TFile(outFilename_Wm,"RECREATE");
-  outTree_Wm = new TTree("Events","Events");
 }
-
+*/
 
 // ------------ method called when ending the processing of a run  ------------
-
+/*
 void 
 selectWm::endRun(edm::Run const&, edm::EventSetup const&)
 {
-  outFile_Wm->Write();
-  outFile_Wm->Close();
 }
-
+*/
 
 // ------------ method called when starting to processes a luminosity block  ------------
 /*

@@ -58,8 +58,8 @@ class selectZmm : public edm::EDAnalyzer {
       virtual void analyze(const edm::Event&, const edm::EventSetup&) override;
       virtual void endJob() override;
 
-      virtual void beginRun(edm::Run const&, edm::EventSetup const&) override;
-      virtual void endRun(edm::Run const&, edm::EventSetup const&) override;
+      //virtual void beginRun(edm::Run const&, edm::EventSetup const&) override;
+      //virtual void endRun(edm::Run const&, edm::EventSetup const&) override;
       //virtual void beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) override;
       //virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) override;
 
@@ -104,8 +104,11 @@ bool Convert_Zmm(unsigned int val,bool print=kFALSE)
 const Double_t MASS_LOW  = 40;
 const Double_t MASS_HIGH = 200;
 const Double_t PT_CUT    = 20;
-const Double_t ETA_CUT   = 2.4;
-const Double_t MUON_MASS  = 0.105658369;
+const Double_t ETA_CUT   = 2.5;
+const Double_t MUON_MASS = 0.105658369;
+
+const Double_t ECAL_GAP_LOW  = 1.4442;
+const Double_t ECAL_GAP_HIGH = 1.566;
 
 Double_t nsel_Zmm=0, nsel_Zmmvar_Zmm=0;
 
@@ -388,6 +391,9 @@ selectZmm::beginJob()
   // Set up output ntuple
   //
 
+  outFile_Zmm = new TFile(outFilename_Zmm,"RECREATE");
+  outTree_Zmm = new TTree("Events","Events");
+
   outTree_Zmm->Branch("nVtx",          &nVtx_Zmm,          "nVtx/I");         // number of vertices
   outTree_Zmm->Branch("genVPt1",       &genVPt1_Zmm,       "genVPt1/F");      // GEN boson pT  (signal MC)  (mother of tag lepton )
   outTree_Zmm->Branch("genVPhi1",      &genVPhi1_Zmm,      "genVPhi1/F");     // GEN boson phi (signal MC)  (mother of tag lepton )
@@ -454,8 +460,8 @@ selectZmm::endJob()
 
    std::cout << nsel_Zmm << " +/- " << sqrt(nsel_Zmmvar_Zmm) << " per 1/fb" << std::endl;
    std::cout << "endJob: nEvents_Zmm is " << nEvents_Zmm << std::endl;
-//   outFile_Zmm->Write();
-//   outFile_Zmm->Close();
+   outFile_Zmm->Write();
+   outFile_Zmm->Close();
 
   //--------------------------------------------------------------------------------------------------------------
   // Output
@@ -475,24 +481,20 @@ selectZmm::endJob()
 }
 
 // ------------ method called when starting to processes a run  ------------
-
+/*
 void 
 selectZmm::beginRun(edm::Run const&, edm::EventSetup const&)
 {
-  outFile_Zmm = new TFile(outFilename_Zmm,"RECREATE");
-  outTree_Zmm = new TTree("Events","Events");
 }
-
+*/
 
 // ------------ method called when ending the processing of a run  ------------
-
+/*
 void 
 selectZmm::endRun(edm::Run const&, edm::EventSetup const&)
 {
-  outFile_Zmm->Write();
-  outFile_Zmm->Close();
 }
-
+*/
 
 // ------------ method called when starting to processes a luminosity block  ------------
 /*

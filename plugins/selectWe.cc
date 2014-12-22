@@ -58,8 +58,8 @@ class selectWe : public edm::EDAnalyzer {
       virtual void analyze(const edm::Event&, const edm::EventSetup&) override;
       virtual void endJob() override;
 
-      virtual void beginRun(edm::Run const&, edm::EventSetup const&) override;
-      virtual void endRun(edm::Run const&, edm::EventSetup const&) override;
+      //virtual void beginRun(edm::Run const&, edm::EventSetup const&) override;
+      //virtual void endRun(edm::Run const&, edm::EventSetup const&) override;
       //virtual void beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) override;
       //virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) override;
 
@@ -329,6 +329,9 @@ selectWe::beginJob()
   // Set up output ntuple
   //
 
+  outFile = new TFile(outFilename,"RECREATE");
+  outTree = new TTree("Events","Events");
+
   outTree->Branch("nVtx",          &nVtx,          "nVtx/I");         // number of vertices
   outTree->Branch("genVPt0",       &genVPt0,       "genVPt0/F");      // GEN boson pT  (signal MC)  (mother of first lepton )
   outTree->Branch("genVPhi0",      &genVPhi0,      "genVPhi0/F");     // GEN boson phi (signal MC)  (mother of first lepton )
@@ -387,6 +390,8 @@ selectWe::endJob()
 
    std::cout << nsel << " +/- " << sqrt(nselvar) << " per 1/fb" << std::endl;
    std::cout << "endJob: nEvents is " << nEvents << std::endl;
+   outFile->Write();
+   outFile->Close();
 
   //--------------------------------------------------------------------------------------------------------------
   // Output
@@ -406,24 +411,20 @@ selectWe::endJob()
 }
 
 // ------------ method called when starting to processes a run  ------------
-
+/*
 void 
 selectWe::beginRun(edm::Run const&, edm::EventSetup const&)
 {
-  outFile = new TFile(outFilename,"RECREATE");
-  outTree = new TTree("Events","Events");
 }
-
+*/
 
 // ------------ method called when ending the processing of a run  ------------
-
+/*
 void 
 selectWe::endRun(edm::Run const&, edm::EventSetup const&)
 {
-  outFile->Write();
-  outFile->Close();
 }
-
+*/
 
 // ------------ method called when starting to processes a luminosity block  ------------
 /*

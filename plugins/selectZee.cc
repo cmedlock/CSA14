@@ -58,8 +58,8 @@ class selectZee : public edm::EDAnalyzer {
       virtual void analyze(const edm::Event&, const edm::EventSetup&) override;
       virtual void endJob() override;
 
-      virtual void beginRun(edm::Run const&, edm::EventSetup const&) override;
-      virtual void endRun(edm::Run const&, edm::EventSetup const&) override;
+      //virtual void beginRun(edm::Run const&, edm::EventSetup const&) override;
+      //virtual void endRun(edm::Run const&, edm::EventSetup const&) override;
       //virtual void beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) override;
       //virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&) override;
 
@@ -352,7 +352,7 @@ selectZee::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    // Mass window
    LorentzVector vdilep_Zee = vTag_Zee + vProbe_Zee; dilep_Zee = &vdilep_Zee;
    TVector2 vdilepPt_Zee(vTag_Zee.px()+vProbe_Zee.px(),vTag_Zee.py()+vProbe_Zee.py());
-   if((vdilep_Zee.M()<MASS_LOW) || (vdilep_Zee.M()>MASS_HIGH)) return;
+//   if((vdilep_Zee.M()<MASS_LOW) || (vdilep_Zee.M()>MASS_HIGH)) return;
 
    // Calculate hadronic recoil
    TVector2 uT  = -1*(vdilepPt_Zee+vtype1pfMET_Zee);
@@ -391,6 +391,9 @@ selectZee::beginJob()
   //
   // Set up output ntuple
   //
+
+  outFile_Zee = new TFile(outFilename_Zee,"RECREATE");
+  outTree_Zee = new TTree("Events","Events");
 
   outTree_Zee->Branch("nVtx",          &nVtx_Zee,          "nVtx/I");         // number of vertices
   outTree_Zee->Branch("genVPt1",       &genVPt1_Zee,       "genVPt1/F");      // GEN boson pT  (signal MC)  (mother of first lepton )
@@ -456,8 +459,8 @@ selectZee::endJob()
 
    std::cout << nsel_Zee << " +/- " << sqrt(nsel_Zeevar_Zee) << " per 1/fb" << std::endl;
    std::cout << "endJob: nEvents_Zee is " << nEvents_Zee << std::endl;
-//   outFile_Zee->Write();
-//   outFile_Zee->Close();
+   outFile_Zee->Write();
+   outFile_Zee->Close();
 
   //--------------------------------------------------------------------------------------------------------------
   // Output
@@ -477,24 +480,20 @@ selectZee::endJob()
 }
 
 // ------------ method called when starting to processes a run  ------------
-
+/*
 void 
 selectZee::beginRun(edm::Run const&, edm::EventSetup const&)
 {
-  outFile_Zee = new TFile(outFilename_Zee,"RECREATE");
-  outTree_Zee = new TTree("Events","Events");
 }
-
+*/
 
 // ------------ method called when ending the processing of a run  ------------
-
+/*
 void 
 selectZee::endRun(edm::Run const&, edm::EventSetup const&)
 {
-  outFile_Zee->Write();
-  outFile_Zee->Close();
 }
-
+*/
 
 // ------------ method called when starting to processes a luminosity block  ------------
 /*

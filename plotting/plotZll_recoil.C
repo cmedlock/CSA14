@@ -21,7 +21,7 @@ bool Convert(unsigned int val,bool print=kFALSE)
 {
    unsigned int mask = 1 << (sizeof(int) * 8 - 1);
    bool lastDigit;
-   for(int i = 0; i < sizeof(int) * 8; i++)
+   for(unsigned int i = 0; i < sizeof(int) * 8; i++)
    {
       if( (val & mask) == 0 ) {
         if(print) cout << "0";
@@ -36,7 +36,7 @@ bool Convert(unsigned int val,bool print=kFALSE)
    return lastDigit;
 }
 
-void plotZee_recoil(const TString inputFileName = "/scratch/cmedlock/PHYS14/DYJetsToLL_M-50_13TeV-madgraph-pythia8_PU20bx25_PHYS14_25_V1-v1_00000.root") {
+void plotZll_recoil(const TString inputFileName = "/scratch/cmedlock/PHYS14/DYJetsToLL_M-50_13TeV-madgraph-pythia8_PU20bx25_PHYS14_25_V1-v1_00000.root") {
 
   //
   // Setup input ntuple
@@ -50,13 +50,7 @@ void plotZee_recoil(const TString inputFileName = "/scratch/cmedlock/PHYS14/DYJe
 
   const Double_t MASS_LOW  = 40;
   const Double_t MASS_HIGH = 200;
-  const Double_t PT_CUT    = 20;
-  const Double_t ETA_CUT   = 2.5;
-  const Double_t ELE_MASS  = 0.000511;
   
-  const Double_t ECAL_GAP_LOW  = 1.4442;
-  const Double_t ECAL_GAP_HIGH = 1.566;
-
   Int_t NVTXBINS = 70; // 70 for Wenu_p, 35 for Wmunu_p
 
   //
@@ -64,15 +58,12 @@ void plotZee_recoil(const TString inputFileName = "/scratch/cmedlock/PHYS14/DYJe
   //
   Int_t nVtx, nEvents;
   TVector2 *vtype1pfMET=0, *vrawpfMET=0, *vgenMET=0;
-  LorentzVector *lep1=0, *lep2=0;, *dilep=0;
-  LorentzVector *sc1=0, *sc2=0;
-  Float_t isLooseEle1=0, isTightEle1=0;
-  Float_t isLooseEle2=0, isTightEle2=0;
+  LorentzVector *lep1=0, *lep2=0, *dilep=0;
 
   inputTree->SetBranchAddress("nVtx",         &nVtx);        // number of vertices
-  inputTree->SetBranchAddress("vtype1pfmet",  &vtype1pfMET); // type-1 corrected pf MET
-  inputTree->SetBranchAddress("vrawpfmet",    &vrawpfMET);   // raw pf MET
-  inputTree->SetBranchAddress("vgenmet",      &vgenMET);     // generated MET
+  inputTree->SetBranchAddress("vtype1pfMET",  &vtype1pfMET); // type-1 corrected pf MET
+  inputTree->SetBranchAddress("vrawpfMET",    &vrawpfMET);   // raw pf MET
+  inputTree->SetBranchAddress("vgenMET",      &vgenMET);     // generated MET
   inputTree->SetBranchAddress("nEvents",      &nEvents);
   inputTree->SetBranchAddress("lep1",         &lep1);
   inputTree->SetBranchAddress("lep2",         &lep2);
@@ -113,8 +104,8 @@ void plotZee_recoil(const TString inputFileName = "/scratch/cmedlock/PHYS14/DYJe
   TH2D *hres_upar = new TH2D("hres_upar","Resolution of u_{||}",50,40,200,50,0,100);
         hres_upar->GetYaxis()->SetTitle("#sigma(u_{||}) [GeV]"); hres_upar->GetYaxis()->SetTitleOffset(1.5);
         hres_upar->GetXaxis()->SetTitle("pT_{\el\el} [GeV]"); hres_upar->GetXaxis()->SetTitleOffset(1.2);
-  TH2D *hres_uperp = new TH2D("hres_uperp","Resolution of u_{\perp}",50,40,200,50,0,100);
-        hres_uperp->GetYaxis()->SetTitle("#sigma(u_{\perp}) [GeV]"); hres_uperp->GetYaxis()->SetTitleOffset(1.5);
+  TH2D *hres_uperp = new TH2D("hres_uperp","Resolution of u_{#perp}",50,40,200,50,0,100);
+        hres_uperp->GetYaxis()->SetTitle("#sigma(u_{#perp}) [GeV]"); hres_uperp->GetYaxis()->SetTitleOffset(1.5);
         hres_uperp->GetXaxis()->SetTitle("pT_{\el\el} [GeV]"); hres_uperp->GetXaxis()->SetTitleOffset(1.2);
 
   //
@@ -209,10 +200,12 @@ void plotZee_recoil(const TString inputFileName = "/scratch/cmedlock/PHYS14/DYJe
     inputTree->GetEntry(jentry);
 
     // Mass window
-    if((dilep.M()<MASS_LOW) || (dilep.M()>MASS_HIGH)) continue;
+    if((dilep->M()<MASS_LOW) || (dilep->M()>MASS_HIGH)) continue;
     // For hadronic recoil study, only look at high pT Z's
-    if(dilep.Pt() < 50) continue;
+    if(dilep->Pt() < 50) continue;
  
+    TVector2 vDilepPt(dilep->Px(),dilep->Py());
+
     nsel++;
 
     type1x = vtype1pfMET->Px();
@@ -239,8 +232,8 @@ void plotZee_recoil(const TString inputFileName = "/scratch/cmedlock/PHYS14/DYJe
     //
     // Fill histograms
     //
-    hzmass->Fill(vDilep.M());
-    hzpt->Fill(vDilep.Pt());
+    hzmass->Fill(dilep->M());
+    hzpt->Fill(dilep->Pt());
     hescale->Fill(vDilepPt.Mod(),uPar.Mod()/vDilepPt.Mod());
     hres_upar->Fill(vDilepPt.Mod(),uPar.Mod());
     hres_uperp->Fill(vDilepPt.Mod(),uPerp.Mod());
@@ -264,8 +257,8 @@ void plotZee_recoil(const TString inputFileName = "/scratch/cmedlock/PHYS14/DYJe
         hres_upar_rms->GetXaxis()->SetTitle("pT_{\el\el} [GeV]"); hres_upar_rms->GetXaxis()->SetTitleOffset(1.2);
   hres_uperp->FitSlicesY();
   TH1D *hres_uperp_rms = (TH1D*)gDirectory->Get("hres_uperp_2");
-        hres_uperp_rms->SetTitle("Resolution of u_{\perp}");
-        hres_uperp_rms->GetYaxis()->SetTitle("#sigma(u_{\perp}) [GeV]"); hres_uperp_rms->GetYaxis()->SetTitleOffset(1.5);
+        hres_uperp_rms->SetTitle("Resolution of u_{#perp}");
+        hres_uperp_rms->GetYaxis()->SetTitle("#sigma(u_{#perp}) [GeV]"); hres_uperp_rms->GetYaxis()->SetTitleOffset(1.5);
         hres_uperp_rms->GetXaxis()->SetTitle("pT_{\el\el} [GeV]"); hres_uperp_rms->GetXaxis()->SetTitleOffset(1.2);
 
   //

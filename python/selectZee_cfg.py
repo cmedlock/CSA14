@@ -9,7 +9,7 @@ options.parseArguments()
 process.load("FWCore.MessageService.MessageLogger_cfi")
 
 #process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(-1) )
-process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(10) )
+process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(10000) )
 
 # load the input files
 process.source = cms.Source("PoolSource",
