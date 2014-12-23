@@ -13,8 +13,8 @@
 //
 // Original Author:  Catherine Aiko Medlock
 //         Created:  Tue, 22 Jul 2014 11:26:17 GMT
-//
-//
+// This code is just an adaptation of Kevin Sung's original code used for the 8 TeV analysis:
+// https://github.com/jaylawhorn/mitewk/blob/master/Selection/selectWe.C
 
 // system include files
 #include <memory>
@@ -76,6 +76,23 @@ class selectWe : public edm::EDAnalyzer {
 
 typedef ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> > LorentzVector;
 
+// Convert int to binary value
+bool Convert_We(unsigned int val,bool print=kFALSE)
+{
+   unsigned int mask = 1 << (sizeof(int) * 8 - 1);
+   bool lastDigit;
+   for(unsigned int i = 0; i < sizeof(int) * 8; i++)
+   {
+      if( (val & mask) == 0 ) {
+        lastDigit=0;
+      } else {
+        lastDigit=1;
+      }
+      mask >>= 1;
+   }
+   return lastDigit;
+}
+
 //
 // static data member definitions
 //
@@ -84,9 +101,12 @@ typedef ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> > LorentzVecto
 // Settings 
 //============================================================================================================== 
 
-const Double_t PT_CUT    = 25;
+const Double_t PT_CUT    = 20;
 const Double_t ETA_CUT   = 2.5;
 const Double_t ELE_MASS  = 0.000511;
+
+const Double_t ECAL_GAP_LOW  = 1.4442;
+const Double_t ECAL_GAP_HIGH = 1.566;
 
 Double_t nsel=0, nselvar=0;
 
@@ -97,28 +117,21 @@ TTree *outTree = new TTree();
 //
 // Declare output ntuple variables
 //
-// Initialize everything to -10 so that it is obvious if an object (such
-// as a Z or W generator level mother particle) doesn't exist
-//
-Int_t   nVtx;
-Float_t genVPt0=-10, genVPhi0=-10;
-Float_t genVPt1=-10, genVPhi1=-10;
+UInt_t   npv;
+Float_t genVPdgID, genVPt, genVPhi, genVy, genVMass;
+Float_t genLepPdgID, genLepPt, genLepPhi;
 Float_t scale1fb;
-Float_t rawpfMETpx, rawpfMETpy; // Will be used in vrawpfMET
+Float_t rawpfMETpx, rawpfMETpy;
 TVector2 vtype1pfMET, vrawpfMET, vgenMET;
-Int_t   q0=-10, q1=-10;
-Int_t   dummynEvents=0, nEvents=0;
-Float_t Ele0pt=-10, Ele0eta=-10, Ele0phi=-10; // Will be used in lep0
-Float_t Ele1pt=-10, Ele1eta=-10, Ele1phi=-10; // Will be used in lep1
-Float_t Elesc0pt=-10, Elesc0eta=-10, Elesc0phi=-10; // Will be used in sc0
-Float_t Elesc1pt=-10, Elesc1eta=-10, Elesc1phi=-10; // Will be used in sc1
-LorentzVector *lep0=0, *lep1=0;
-LorentzVector *sc0=0, *sc1=0;
+Float_t mt, u1, u2;
+Int_t q;
+Int_t dummynEvents=0, nEvents=0;
+LorentzVector *lep=0;
 ///// electron specific /////
-Float_t pfChIso0=-10, pfGamIso0=-10, pfNeuIso0=-10;
-Float_t pfChIso1=-10, pfGamIso1=-10, pfNeuIso1=-10;
-Float_t isLooseEle0=-10, isTightEle0=-10;
-Float_t isLooseEle1=-10, isTightEle1=-10;
+Float_t pfChIso, pfGamIso, pfNeuIso;
+Float_t isLooseEle, isTightEle;
+Bool_t passEleLooseID, passEleTightID;
+LorentzVector *sc=0;
 
 // Compute MC event weight_sel per 1/fb
 Double_t weight = 1;
@@ -156,128 +169,63 @@ selectWe::~selectWe()
 void
 selectWe::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
+
    using namespace edm;
 
    dummynEvents++;
-
-   isLooseEle0=-10; isTightEle0=-10;
-   isLooseEle1=-10; isTightEle1=-10;
 
    Handle<reco::VertexCollection> vertices;
    iEvent.getByToken(vtxToken_, vertices);
    // good vertex requirement
    if (vertices->empty()) return; // skip the event if no PV found
 //   const reco::Vertex &PV = vertices->front();
-   nVtx = vertices->size();
 
    Handle<pat::ElectronCollection> electrons;
    iEvent.getByToken(electronToken_, electrons);
-   if(electrons->size()==0) return;   // skip the event if no electrons found
+   if(electrons->size()==0) return; // skip the event if there are no electrons
 
-   unsigned int idxEle0=-1, idxEle1=-1;
-   float maxElept=-1, secondmaxElept=-1;
-   // find the electron with the highest pT
+   //
+   // SELECTION PROCEDURE:
+   //  (1) Look for 1 good electron matched to trigger
+   //  (2) Reject event if another electron is present passing looser cuts
+   //
+   Int_t  nLooseLep=0;
+   Bool_t passSel=kFALSE;
+   Int_t  goodEleIdx=0;
    for (unsigned int jElectron=0;jElectron < electrons->size();jElectron++) {
      const pat::Electron &ele = (*electrons)[jElectron];
-     if     (maxElept==-1)                      { maxElept=ele.pt(); idxEle0=jElectron; }
-     else if(maxElept!=-1 && ele.pt()>maxElept) { maxElept=ele.pt(); idxEle0=jElectron; }
+
+     // check ECAL gap
+     if(fabs(ele.superCluster()->eta())>=ECAL_GAP_LOW && fabs(ele.superCluster()->eta())<=ECAL_GAP_HIGH) continue;
+
+     isLooseEle = ele.electronID("eidLoose"); passEleLooseID = Convert_We(isLooseEle);
+     isTightEle = ele.electronID("eidTight"); passEleTightID = Convert_We(isTightEle);
+
+     if(fabs(ele.superCluster()->eta())> 2.5) continue; // lepton |eta| cut
+     if(ele.superCluster()->energy()   < 20 ) continue; // lepton pT cut
+     if(passEleLooseID)                       nLooseLep++; // loose lepton selection
+     if(nLooseLep>1) { // extra lepton veto
+       passSel=kFALSE;
+       break;
+     }
+
+     if(fabs(ele.superCluster()->eta()) > ETA_CUT) continue; // lepton |eta| cut
+     if(ele.superCluster()->energy()    < PT_CUT ) continue; // lepton pT cut
+     if(!passEleTightID)                           continue; // lepton selection
+
+     passSel = kTRUE;
+     goodEleIdx = jElectron;
    }
-   const pat::Electron &Ele0 = (*electrons)[idxEle0];
-   q0           = Ele0.charge();
-   Ele0pt       = Ele0.pt();
-   Ele0eta      = Ele0.eta();
-   Ele0phi      = Ele0.phi();
-   Elesc0pt     = Ele0.superCluster()->energy()*(Ele0.pt()/Ele0.p());
-   Elesc0eta    = Ele0.superCluster()->eta();
-   Elesc0phi    = Ele0.superCluster()->phi();
-   pfChIso0     = Ele0.chargedHadronIso();
-   pfGamIso0    = Ele0.photonIso();
-   pfNeuIso0    = Ele0.neutralHadronIso();
-   isLooseEle0  = Ele0.electronID("eidLoose");
-   isTightEle0  = Ele0.electronID("eidTight");
-   // get mother particle information
-   const reco::GenParticle* gen = Ele0.genLepton();
-   Bool_t foundGenV0 = kFALSE; // some events do not have a generated Z or W, this protects against a seg fault
-   if(gen!=NULL) {
-     const reco::Candidate* genCand = gen;
-     while(genCand!=NULL && genCand->numberOfMothers()==1) {
-       genCand = genCand->mother(0);
-       if( (  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV0 ) foundGenV0=kTRUE;
-       genVPt0  = genCand->pt();
-       genVPhi0 = genCand->phi();
-     }
-     // mother particle should always be either a Z or a W
-     // if it isn't, trace back to the first daughter particle that is either a Z or a W
-     if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && foundGenV0) {
-       while( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) ) {
-         genCand = genCand->daughter(0);
-         genVPt0  = genCand->pt();
-         genVPhi0 = genCand->phi();
-       }
-     }
-     // if there is no mother particle that is a Z or a W, mark this by saving the mother particle pT and phi both as -10
-     else if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV0) {
-       genVPt0  = -10;
-       genVPhi0 = -10;
-     }
-   }
-   // if there is > 1 electron, find the one with the second highest pT
-   if(electrons->size() > 1) {
-     for (unsigned int kElectron=0; kElectron < electrons->size();kElectron++) {
-       const pat::Electron &ele = (*electrons)[kElectron];
-       if(kElectron==idxEle0)                                                       continue;
-       else if(kElectron!=idxEle0 && secondmaxElept==-1)                            { secondmaxElept=ele.pt(); idxEle1=kElectron; }
-       else if(kElectron!=idxEle0 && secondmaxElept!=-1 && ele.pt()>secondmaxElept) { secondmaxElept=ele.pt(); idxEle1=kElectron; }
-     }
-     const pat::Electron &Ele1 = (*electrons)[idxEle1];
-     q1           = Ele1.charge();
-     Ele1pt       = Ele1.pt();
-     Ele1eta      = Ele1.eta();
-     Ele1phi      = Ele1.phi();
-     Elesc1pt     = Ele1.superCluster()->energy()*(Ele1.pt()/Ele1.p());
-     Elesc1eta    = Ele1.superCluster()->eta();
-     Elesc1phi    = Ele1.superCluster()->phi();
-     pfChIso1     = Ele1.chargedHadronIso();
-     pfGamIso1    = Ele1.photonIso();
-     pfNeuIso1    = Ele1.neutralHadronIso();
-     isLooseEle1  = Ele1.electronID("eidLoose");
-     isTightEle1  = Ele1.electronID("eidTight");
-     // get mother particle information
-     const reco::GenParticle* gen = Ele1.genLepton();
-     Bool_t foundGenV1 = kFALSE; // some events do not have a generated Z or W, this protects against a seg fault
-     if(gen!=NULL) {
-       const reco::Candidate* genCand = gen;
-       while(genCand!=NULL && genCand->numberOfMothers()==1) {
-         genCand = genCand->mother(0);
-         if( (  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV1 ) foundGenV1=kTRUE;
-         genVPt1  = genCand->pt();
-         genVPhi1 = genCand->phi();
-       }
-       // mother particle should always be either a Z or a W
-       // if it isn't, trace back to the first daughter particle that is either a Z or a W
-       if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && foundGenV1) {
-         while( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) ) {
-           genCand = genCand->daughter(0);
-           genVPt1  = genCand->pt();
-           genVPhi1 = genCand->phi();
-         }
-       }
-       // if there is no mother particle that is a Z or a W, mark this by saving the mother particle pT and phi both as -10
-       else if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV1) {
-         genVPt1  = -10;
-         genVPhi1 = -10;
-       }
-     }
-   }
+
+   const pat::Electron &goodEle = (*electrons)[goodEleIdx];
+
+   if(passSel==kFALSE) return;
 
    nsel    += weight;
    nselvar += weight*weight;
-   scale1fb = weight;
 
-   LorentzVector vLep0(Ele0pt, Ele0eta, Ele0phi, ELE_MASS); lep0 = &vLep0;
-   LorentzVector vLep1(Ele1pt, Ele1eta, Ele1phi, ELE_MASS); lep1 = &vLep1;
-   LorentzVector vSC0(Elesc0pt, Elesc0eta, Elesc0phi, ELE_MASS); sc0 = &vSC0;
-   LorentzVector vSC1(Elesc1pt, Elesc1eta, Elesc1phi, ELE_MASS); sc1 = &vSC1;
+   LorentzVector vLep(goodEle.pt(),goodEle.eta(),goodEle.phi(),ELE_MASS);
+   LorentzVector vSC(goodEle.superCluster()->energy(),goodEle.superCluster()->eta(),goodEle.superCluster()->phi(),ELE_MASS);
 
    // Save MET information
 
@@ -303,6 +251,48 @@ selectWe::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    //
    // Fill tree
    //
+   npv = vertices->size();
+   genVPdgID   = 0;
+   genVPt      = 0;
+   genVPhi     = 0;
+   genVy       = 0;
+   genVMass    = 0;
+   genLepPdgID = 0;
+   genLepPt    = 0;
+   genLepPhi   = 0;
+   u1          = 0;
+   u2          = 0;
+   const reco::GenParticle* genLep = goodEle.genLepton();
+   if(genLep!=NULL) {
+     genLepPdgID = genLep->pdgId();
+     genLepPt    = genLep->pt();
+     genLepPhi   = genLep->phi();
+     const reco::Candidate* mother = genLep->mother(0);
+     genVPdgID = mother->pdgId();
+     genVPt    = mother->pt();
+     genVPhi   = mother->phi();
+     genVy     = mother->y();
+     genVMass  = mother->mass();
+     TVector2 vWPt(genVPt*cos(genVPhi),genVPt*sin(genVPhi));
+     TVector2 vLepPt(vLep.Px(),vLep.Py());
+     TVector2 vU = -1.0*(vtype1pfMET+vLepPt);
+     u1 = (vWPt.Px()*vU.Px()+vWPt.Py()*vU.Py())/genVPt; // u1 = (pT . u)/|pT|
+     u2 = (vWPt.Px()*vU.Px()-vWPt.Py()*vU.Py())/genVPt; // u1 = (pT x u)/|pT|
+   }
+
+   scale1fb = weight;
+   mt       = sqrt(2.0*vLep.Pt()*vtype1pfMET.Mod()*(1.0-cos(vLep.Phi()-vtype1pfMET.Phi())));
+   q        = goodEle.charge();
+   lep      = &vLep;
+
+   ///// electron specific /////
+   sc = &vSC;
+   pfChIso = goodEle.chargedHadronIso();
+   pfGamIso = goodEle.photonIso();
+   pfNeuIso = goodEle.neutralHadronIso();
+   isLooseEle = goodEle.electronID("eidLoose"); passEleLooseID = Convert_We(isLooseEle);
+   isTightEle = goodEle.electronID("eidTight"); passEleTightID = Convert_We(isTightEle);
+
    outTree->Fill();
 
 #ifdef THIS_IS_AN_EVENT_EXAMPLE
@@ -332,33 +322,29 @@ selectWe::beginJob()
   outFile = new TFile(outFilename,"RECREATE");
   outTree = new TTree("Events","Events");
 
-  outTree->Branch("nVtx",          &nVtx,          "nVtx/I");         // number of vertices
-  outTree->Branch("genVPt0",       &genVPt0,       "genVPt0/F");      // GEN boson pT  (signal MC)  (mother of first lepton )
-  outTree->Branch("genVPhi0",      &genVPhi0,      "genVPhi0/F");     // GEN boson phi (signal MC)  (mother of first lepton )
-  outTree->Branch("genVPt1",       &genVPt1,       "genVPt1/F");      // GEN boson pT  (signal MC)  (mother of second lepton)
-  outTree->Branch("genVPhi1",      &genVPhi1,      "genVPhi1/F");     // GEN boson phi (signal MC)  (mother of second lepton)
+  outTree->Branch("npv",           &npv,           "npv/I");          // number of primary vertices
+  outTree->Branch("genVPt",        &genVPt,        "genVPt/F");       // GEN boson pT (signal MC)
+  outTree->Branch("genVPhi",       &genVPhi,       "genVPhi/F");      // GEN boson phi (signal MC)
+  outTree->Branch("genVy",         &genVy,         "genVy/F");        // GEN boson rapidity (signal MC)
+  outTree->Branch("genVMass",      &genVMass,      "genVMass/F");     // GEN boson mass (signal MC)
+  outTree->Branch("genLepPt",      &genLepPt,      "genLepPt/F");     // GEN lepton pT (signal MC)
+  outTree->Branch("genLepPhi",     &genLepPhi,     "genLepPhi/F");    // GEN lepton phi (signal MC)
   outTree->Branch("scale1fb",      &scale1fb,      "scale1fb/F");     // event weight per 1/fb (MC)
   outTree->Branch("vtype1pfmet",   "TVector2",     &vtype1pfMET);     // type-1 corrected pf MET
   outTree->Branch("vrawpfmet",     "TVector2",     &vrawpfMET);       // raw pf MET
   outTree->Branch("vgenmet",       "TVector2",     &vgenMET);         // generated MET
-  outTree->Branch("q0",            &q0,            "q0/I");           // lepton charge (first lepton )
-  outTree->Branch("q1",            &q1,            "q1/I");           // lepton charge (second lepton)
+  outTree->Branch("mt",            &mt,            "mt/F");           // transverse mass
+  outTree->Branch("u1",            &u1,            "u1/F");           // parallel component of recoil
+  outTree->Branch("u2",            &u2,            "u2/F");           // perpendicular component of recoil 
+  outTree->Branch("q",             &q,             "q/I");            // lepton charge
   outTree->Branch("nEvents",       &nEvents,       "nEvents/I");      // events in MC file
-  outTree->Branch("lep0", "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &lep0);   // lepton 4-vector (first lepton )
-  outTree->Branch("lep1", "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &lep1);   // lepton 4-vector (second lepton)
-  outTree->Branch("sc0",  "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &sc0);    // supercluster 4-vector (first lepton )
-  outTree->Branch("sc1",  "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &sc1);    // supercluster 4-vector (second lepton)
+  outTree->Branch("lep", "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &lep);   // lepton 4-vector
   ///// electron specific /////
-  outTree->Branch("pfChIso0",     &pfChIso0,    "pfChIso0/F");      // PF charged hadron isolation of lepton (first lepton )
-  outTree->Branch("pfGamIso0",    &pfGamIso0,   "pfGamIso0/F");     // PF photon isolation of lepton         (first lepton )
-  outTree->Branch("pfNeuIso0",    &pfNeuIso0,   "pfNeuIso0/F");     // PF neutral hadron isolation of lepton (first lepton )
-  outTree->Branch("pfChIso1",     &pfChIso1,    "pfChIso1/F");      // PF charged hadron isolation of lepton (second lepton)
-  outTree->Branch("pfGamIso1",    &pfGamIso1,   "pfGamIso1/F");     // PF photon isolation of lepton         (second lepton)
-  outTree->Branch("pfNeuIso1",    &pfNeuIso1,   "pfNeuIso1/F");     // PF neutral hadron isolation of lepton (second lepton)
-  outTree->Branch("isLooseEle0",  &isLooseEle0, "isLooseEle0/F");   // loose electron ID (first lepton )
-  outTree->Branch("isTightEle0",  &isTightEle0, "isTightEle0/F");   // tight electron ID (first lepton )
-  outTree->Branch("isLooseEle1",  &isLooseEle1, "isLooseEle1/F");   // loose electron ID (second lepton)
-  outTree->Branch("isTightEle1",  &isTightEle1, "isTightEle1/F");   // tight electron ID (second lepton)
+  outTree->Branch("pfChIso",       &pfChIso,       "pfChIso/F");      // PF charged hadron isolation of electron
+  outTree->Branch("pfGamIso",      &pfGamIso,      "pfGamIso/F");     // PF photon isolation of electron
+  outTree->Branch("pfNeuIso",      &pfNeuIso,      "pfNeuIso/F");     // PF neutral hadron isolation of electron
+  outTree->Branch("isLooseEle",    &isLooseEle,    "isLooseEle/F");   // loose electron ID
+  outTree->Branch("isTightEle",    &isTightEle,    "isTightEle/F");   // tight electron ID
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
@@ -368,24 +354,23 @@ selectWe::endJob()
 
    // The only information in the last entry of the tree is the total number of events
    // that were processed (not the same as the total number of events selected).
-   nVtx = -10;
-   genVPt0 = -10; genVPhi0 = -10;
-   genVPt1 = -10; genVPhi1 = -10;
-   scale1fb = -10;
-   vtype1pfMET.Set(-10.0,-10.0);
-   vrawpfMET.Set(-10.0,-10.0);
-   vgenMET.Set(-10.0,-10.0);
-   q0 = -10; q1 = -10;
+   npv=0;
+   genVPdgID=0, genVPt=0, genVPhi=0, genVy=0, genVMass=0;
+   genLepPt=0, genLepPhi=0;
+   scale1fb=0;
+   vtype1pfMET.Set(0.0,0.0);
+   vrawpfMET.Set(0.0,0.0);
+   vgenMET.Set(0.0,0.0);
+   q=0;
    nEvents = dummynEvents;
-   LorentzVector dummyLep(-10, -10, -10, -10);
-   lep0 = &dummyLep;
-   lep1 = &dummyLep;
-   sc0 = &dummyLep;
-   sc1 = &dummyLep;
-   pfChIso0 = -10; pfGamIso0 = -10; pfNeuIso0 = -10;
-   pfChIso1 = -10; pfGamIso1 = -10; pfNeuIso1 = -10;
-   isLooseEle0 = kFALSE; isTightEle0 = kFALSE;
-   isLooseEle1 = kFALSE; isTightEle1 = kFALSE;
+   LorentzVector dummyLep(0, 0, 0, 0);
+   lep = &dummyLep;
+   ///// electron specific /////
+   pfChIso=0, pfGamIso=0, pfNeuIso=0;
+   isLooseEle=0; isTightEle=0;
+   passEleLooseID=kFALSE; passEleTightID=kFALSE;
+   sc=0;
+
    outTree->Fill();
 
    std::cout << nsel << " +/- " << sqrt(nselvar) << " per 1/fb" << std::endl;
