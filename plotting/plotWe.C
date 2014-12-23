@@ -11,6 +11,9 @@
 #include <TMath.h>
 #include "Math/GenVector/LorentzVector.h"
 
+// This code is just an adaptation of Kevin Sung's original code used for the 8 TeV analysis:
+// https://github.com/jaylawhorn/mitewk/blob/r12a/Selection/plotWe.C
+
 typedef ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> > LorentzVector;
 
 // Convert int to binary value
@@ -33,7 +36,7 @@ bool Convert(unsigned int val,bool print=kFALSE)
    return lastDigit;
 }
 
-void plotWe(const TString inputFileName = "Wenu_p_select.root") {
+void plotWe(const TString inputFileName = "selectWe.root") {
 
   //
   // Setup input ntuple
@@ -45,59 +48,54 @@ void plotWe(const TString inputFileName = "Wenu_p_select.root") {
   // Settings 
   //============================================================================================================== 
 
-  const Double_t PT_CUT   = 25;
-  const Double_t ETA_CUT  = 2.5;
-//  const Double_t ELE_MASS = 0.000511;
-  
-  const Double_t ECAL_GAP_LOW  = 1.4442;
-  const Double_t ECAL_GAP_HIGH = 1.566;
-
   Int_t NVTXBINS = 70; // 70 for Wenu_p, 35 for Wmunu_p
 
   //
   // Declare variables to read in ntuple
   //
-  Int_t nVtx, nEvents;
+  Int_t npv, nEvents;
   TVector2 *vtype1pfMET=0, *vrawpfMET=0, *vgenMET=0;
-  LorentzVector *lep0=0, *lep1=0;
-  LorentzVector *sc0=0, *sc1=0;
-  Float_t isLooseEle0=0, isTightEle0=0;
-  Float_t isLooseEle1=0, isTightEle1=0;
+  Float_t mt;
+  LorentzVector *lep=0;
 
-  inputTree->SetBranchAddress("nVtx",         &nVtx);        // number of vertices
+  inputTree->SetBranchAddress("npv",          &npv);         // number of vertices
   inputTree->SetBranchAddress("vtype1pfmet",  &vtype1pfMET); // type-1 corrected pf MET
   inputTree->SetBranchAddress("vrawpfmet",    &vrawpfMET);   // raw pf MET
   inputTree->SetBranchAddress("vgenmet",      &vgenMET);     // generated MET
+  inputTree->SetBranchAddress("mt",           &mt);          // transverse mass
   inputTree->SetBranchAddress("nEvents",      &nEvents);
-  inputTree->SetBranchAddress("lep0",         &lep0);
-  inputTree->SetBranchAddress("lep1",         &lep1);
-  inputTree->SetBranchAddress("sc0",          &sc0);
-  inputTree->SetBranchAddress("sc1",          &sc1);
-  inputTree->SetBranchAddress("isLooseEle0",  &isLooseEle0);
-  inputTree->SetBranchAddress("isTightEle0",  &isTightEle0);
-  inputTree->SetBranchAddress("isLooseEle1",  &isLooseEle1);
-  inputTree->SetBranchAddress("isTightEle1",  &isTightEle1);
+  inputTree->SetBranchAddress("lep",          &lep);
            
   //
   // Declare histograms
   //
-  // would be good if could implement the MET corrections into this macro
-  TH1D *hele0pt = new TH1D("hele0pt","pT of Electron Supercluster Passing Tight Selection",100,0,400);
-        hele0pt->GetYaxis()->SetTitle("Events / 4 GeV");
-        hele0pt->GetYaxis()->SetTitleOffset(1.5);
-        hele0pt->GetXaxis()->SetTitle("pT_{e} [GeV]");
-        hele0pt->GetXaxis()->SetTitleOffset(1.2);
-  TH1D *hele0eta = new TH1D("hele0eta","Eta of Electron Supercluster Passing Tight Selection",100,-3.0,3.0);
-        hele0eta->GetYaxis()->SetTitle("Events / 0.6");
-        hele0eta->GetYaxis()->SetTitleOffset(1.5);
-        hele0eta->GetXaxis()->SetTitle("#eta_{e}");
-        hele0eta->GetXaxis()->SetTitleOffset(1.2);
-  TH1D *hele0phi = new TH1D("hele0phi","Phi of Electron Supercluster Passing Tight Selection",100,-3.5,3.5);
-        hele0phi->GetYaxis()->SetTitle("Events / 0.7");
-        hele0phi->GetYaxis()->SetTitleOffset(1.5);
-        hele0phi->GetXaxis()->SetTitle("#phi_{e}");
-        hele0phi->GetXaxis()->SetTitleOffset(1.2);
- TH1D *htype1  = new TH1D("htype1","",100,0,150);
+  //
+  TH1D *helePt = new TH1D("helePt","pT of Electron Passing Tight Selection",100,0,400);
+        helePt->GetYaxis()->SetTitle("Events / 4 GeV");
+        helePt->GetYaxis()->SetTitleOffset(1.5);
+        helePt->GetXaxis()->SetTitle("pT_{e} [GeV]");
+        helePt->GetXaxis()->SetTitleOffset(1.2);
+  TH1D *heleEta = new TH1D("heleEta","Eta of Electron Passing Tight Selection",100,-3.0,3.0);
+        heleEta->GetYaxis()->SetTitle("Events / 0.6");
+        heleEta->GetYaxis()->SetTitleOffset(1.5);
+        heleEta->GetXaxis()->SetTitle("#eta_{e}");
+        heleEta->GetXaxis()->SetTitleOffset(1.2);
+  TH1D *helePhi = new TH1D("helePhi","Phi of Electron Passing Tight Selection",100,-3.5,3.5);
+        helePhi->GetYaxis()->SetTitle("Events / 0.7");
+        helePhi->GetYaxis()->SetTitleOffset(1.5);
+        helePhi->GetXaxis()->SetTitle("#phi_{e}");
+        helePhi->GetXaxis()->SetTitleOffset(1.2);
+  TH1D *hmt = new TH1D("hmt","Transverse Mass",100,0,150);
+        hmt->GetYaxis()->SetTitle("Events / 1.5 GeV");
+        hmt->GetYaxis()->SetTitleOffset(1.5);
+        hmt->GetXaxis()->SetTitle("m_{T} [GeV]");
+        hmt->GetXaxis()->SetTitleOffset(1.2);
+  TH1D *hnpv = new TH1D("hnpv","Number of Primary Vertices",35,-0.5,34.5);
+        hnpv->GetYaxis()->SetTitle("Events");
+        hnpv->GetYaxis()->SetTitleOffset(1.5);
+        hnpv->GetXaxis()->SetTitle("# of PV");
+        hnpv->GetXaxis()->SetTitleOffset(1.2);
+  TH1D *htype1  = new TH1D("htype1","",100,0,150);
         htype1->SetStats(0);
         htype1->SetLineColor(1);
   TH1D *htype1phi = new TH1D("htype1phi","",100,-3.5,3.5);
@@ -170,7 +168,7 @@ void plotWe(const TString inputFileName = "Wenu_p_select.root") {
   legphi->AddEntry(hraw,"Raw PF","l");
   legphi->AddEntry(hgen,"Generated","l");
 
-  Int_t totalEvents=0, nsel=0;
+  Int_t totalEvents=0;
 
   for(int kentry=0;kentry<inputTree->GetEntries();kentry++) {
     inputTree->GetEntry(kentry);
@@ -179,8 +177,8 @@ void plotWe(const TString inputFileName = "Wenu_p_select.root") {
     //
     // Fill histograms
     //
-    hmetx->Fill(nVtx,vtype1pfMET->Px());
-    hmety->Fill(nVtx,vtype1pfMET->Py());
+    hmetx->Fill(npv,vtype1pfMET->Px());
+    hmety->Fill(npv,vtype1pfMET->Py());
   }
 
   cout << "totalEvents is " << totalEvents << endl;
@@ -193,10 +191,12 @@ void plotWe(const TString inputFileName = "Wenu_p_select.root") {
   TH2D* hmetxfit = new TH2D("hmetxfit","MET_{x} v. Number of vertices",NVTXBINS,0,NVTXBINS,100,-25,5);
         hmetxfit->GetXaxis()->SetTitle("Number of vertices");
         hmetxfit->GetYaxis()->SetTitle("<MET_{x}> [GeV]");
+        hmetxfit->SetMarkerStyle(7);
         hmetxfit->SetMarkerSize(21);
   TH2D* hmetyfit = new TH2D("hmetyfit","MET_{y} v. Number of vertices",NVTXBINS,0,NVTXBINS,100,-25,5);
         hmetyfit->GetXaxis()->SetTitle("Number of vertices");
         hmetyfit->GetYaxis()->SetTitle("<MET_{y}> [GeV]");
+        hmetyfit->SetMarkerStyle(7);
         hmetyfit->SetMarkerSize(21);
   for(int jbin=1;jbin<hmetx->GetNbinsX()+1;jbin++) {
     hmetx_proj = hmetx->ProjectionY("metx_proj",jbin,jbin+1,"");
@@ -224,14 +224,6 @@ void plotWe(const TString inputFileName = "Wenu_p_select.root") {
   fliney->SetParameter(1,ypar1);
   hmetyfit->Fit(fliney);
 
-  std::cout << std::endl;
-  std::cout << "x fit parameter initial values: " << xpar0 << "," << xpar1 << std::endl;
-  std::cout << "x fit parameters final values: " << flinex->GetParameter(0) << "," << flinex->GetParameter(1) << std::endl;
-  std::cout << std::endl;
-  std::cout << "y fit parameter initial values: " << ypar0 << "," << ypar1 << std::endl;
-  std::cout << "y fit parameters final values: " << fliney->GetParameter(0) << "," << fliney->GetParameter(1) << std::endl;
-  std::cout << std::endl;
-
   // Correct the MET
   Double_t flinex0=flinex->GetParameter(0), flinex1=flinex->GetParameter(1);
   Double_t fliney0=fliney->GetParameter(0), fliney1=fliney->GetParameter(1);
@@ -241,27 +233,6 @@ void plotWe(const TString inputFileName = "Wenu_p_select.root") {
 
   for(int jentry=0;jentry<inputTree->GetEntries();jentry++) {
     inputTree->GetEntry(jentry);
-
-    //
-    // SELECTION PROCEDURE:
-    //  (1) Look for 1 good electron matched to trigger
-    //  (2) Reject event if another electron is present passing looser cuts
-    //
-    Bool_t passSel=kFALSE, passSel0=kFALSE, passSel1=kFALSE;
-    Bool_t inECALgap0=kFALSE, inECALgap1=kFALSE;
-    Int_t nLooseLep=0;
-    if(  fabs(sc0->Eta())>=ECAL_GAP_LOW && fabs(sc0->Eta())<=ECAL_GAP_HIGH  ) inECALgap0=kTRUE; // check ECAL gap
-    if(  fabs(sc1->Eta())>=ECAL_GAP_LOW && fabs(sc1->Eta())<=ECAL_GAP_HIGH  ) inECALgap1=kTRUE;
-    if(  !inECALgap0 && fabs(sc0->Eta())<=2.5 && sc0->Pt()>=20 && Convert(isLooseEle0)  ) nLooseLep++;
-    if(  !inECALgap1 && fabs(sc1->Eta())<=2.5 && sc1->Pt()>=20 && Convert(isLooseEle1)  ) nLooseLep++;
-    if(  nLooseLep>1  ) continue; // event not interesting if there are multiple electrons passing the loose selection
-    if(  !inECALgap0 && fabs(sc0->Eta())<=ETA_CUT && sc0->Pt()>=PT_CUT && Convert(isTightEle0)  ) passSel0=kTRUE;
-    if(  !inECALgap1 && fabs(sc1->Eta())<=ETA_CUT && sc1->Pt()>=PT_CUT && Convert(isTightEle1)  ) passSel1=kTRUE;
-
-    if(  passSel0 != passSel1  ) passSel=kTRUE;
-    if(  !passSel  ) continue; // event not interesting if there is no electron passing the tight selection
-
-    nsel++;
 
     type1x = vtype1pfMET->Px();
     type1y = vtype1pfMET->Py();
@@ -273,23 +244,21 @@ void plotWe(const TString inputFileName = "Wenu_p_select.root") {
     genphi = vgenMET->Phi();
     if(genphi>TMath::Pi())   genphi   -= 2*TMath::Pi();
 
-    corrMETx = type1x-flinex0-flinex1*nVtx;
-    corrMETy = type1y-fliney0-fliney1*nVtx;
+    corrMETx = type1x-flinex0-flinex1*npv;
+    corrMETy = type1y-fliney0-fliney1*npv;
     corrMET  = TMath::Sqrt(corrMETx*corrMETx + corrMETy*corrMETy);
     corrMETphi = TMath::ATan2(corrMETy,corrMETx);
 
     //
     // Fill histograms
     //
-    if(passSel0 && !passSel1) {
-      hele0pt->Fill(sc0->Pt());
-      hele0eta->Fill(sc0->Eta());
-      hele0phi->Fill(sc0->Phi());
-    } else if (!passSel0 && passSel1) {
-      hele0pt->Fill(sc1->Pt());
-      hele0eta->Fill(sc1->Eta());
-      hele0phi->Fill(sc1->Phi());
-    }
+
+    helePt->Fill(lep->Pt());
+    heleEta->Fill(lep->Eta());
+    helePhi->Fill(lep->Phi());
+    hmt->Fill(mt);
+    hnpv->Fill(npv);
+
     htype1->Fill(vtype1pfMET->Mod());
     htype1phi->Fill(type1phi);
     htype1corr->Fill(corrMET);
@@ -301,27 +270,25 @@ void plotWe(const TString inputFileName = "Wenu_p_select.root") {
 
   }
 
-  cout << "nsel is " << nsel << endl;
-
   //
   // Save plots
   //
-  TCanvas* cele0pt = new TCanvas();
-  cele0pt->cd();
-  cele0pt->SetLogy();
-  hele0pt->Draw();
-  cele0pt->Print("ele0pt.png");
-  cele0pt->Close();
-  TCanvas* cele0eta = new TCanvas();
-  cele0eta->cd();
-  hele0eta->Draw();
-  cele0eta->Print("ele0eta.png");
-  cele0eta->Close();
-  TCanvas* cele0phi = new TCanvas();
-  cele0phi->cd();
-  hele0phi->Draw();
-  cele0phi->Print("ele0phi.png");
-  cele0phi->Close();
+  TCanvas* celePt = new TCanvas();
+  celePt->cd();
+  celePt->SetLogy();
+  helePt->Draw();
+  celePt->Print("elePt.png");
+  celePt->Close();
+  TCanvas* celeEta = new TCanvas();
+  celeEta->cd();
+  heleEta->Draw();
+  celeEta->Print("eleEta.png");
+  celeEta->Close();
+  TCanvas* celePhi = new TCanvas();
+  celePhi->cd();
+  helePhi->Draw();
+  celePhi->Print("elePhi.png");
+  celePhi->Close();
   TCanvas* cmet = new TCanvas();
   cmet->cd();
   hgen->Draw();
@@ -339,7 +306,7 @@ void plotWe(const TString inputFileName = "Wenu_p_select.root") {
   hgenphi->Draw("same");
   legphi->Draw("same");
   cmetphi->Print("metphi.png");
-//  cmetphi->Close();
+  cmetphi->Close();
   TCanvas* cmetx = new TCanvas();
   cmetx->cd();
   hmetx->Draw();

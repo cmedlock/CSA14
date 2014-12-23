@@ -6,14 +6,37 @@
 #include <TH2D.h>
 #include <TLegend.h>
 #include <TCanvas.h>
-#include "Math/LorentzVector.h"
 #include <TVector2.h>
 #include <TF1.h>
 #include <TMath.h>
+#include "Math/GenVector/LorentzVector.h"
+
+// This code is just an adaptation of Kevin Sung's original code used for the 8 TeV analysis:
+// https://github.com/jaylawhorn/mitewk/blob/r12a/Selection/plotWm.C
 
 typedef ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> > LorentzVector;
 
-void plotWm(const TString inputFileName="Wmunu_p_select.root") {
+// Convert int to binary value
+bool Convert(unsigned int val,bool print=kFALSE)
+{
+   unsigned int mask = 1 << (sizeof(int) * 8 - 1);
+   bool lastDigit;
+   for(int i = 0; i < sizeof(int) * 8; i++)
+   {
+      if( (val & mask) == 0 ) {
+        if(print) cout << "0";
+        lastDigit=0;
+      } else {
+        if(print) cout << "1";
+        lastDigit=1;
+      }
+      mask  >>= 1;
+   }
+   if(print) cout << endl;
+   return lastDigit;
+}
+
+void plotWm(const TString inputFileName = "selectWm.root") {
 
   //
   // Setup input ntuple
@@ -25,53 +48,53 @@ void plotWm(const TString inputFileName="Wmunu_p_select.root") {
   // Settings 
   //============================================================================================================== 
 
-  const Double_t PT_CUT    = 25;
-  const Double_t ETA_CUT   = 2.1;
-//  const Double_t MUON_MASS = 0.105658369;
-
   Int_t NVTXBINS = 35; // 70 for Wenu_p, 35 for Wmunu_p
 
   //
   // Declare variables to read in ntuple
   //
-  Int_t nVtx, nEvents;
+  Int_t npv, nEvents;
   TVector2 *vtype1pfMET=0, *vrawpfMET=0, *vgenMET=0;
-  LorentzVector *lep0=0, *lep1=0;
-  Bool_t isLooseMuon0, isSoftMuon0, isTightMuon0;
-  Bool_t isLooseMuon1, isSoftMuon1, isTightMuon1;
+  Float_t mt;
+  LorentzVector *lep=0;
 
-  inputTree->SetBranchAddress("nVtx",         &nVtx);        // number of vertices
-  inputTree->SetBranchAddress("vtype1pfMET",  &vtype1pfMET); // type-1 corrected pf MET
-  inputTree->SetBranchAddress("vrawpfMET",    &vrawpfMET);   // raw pf MET
-  inputTree->SetBranchAddress("vgenMET",      &vgenMET);     // generated MET
+  inputTree->SetBranchAddress("npv",          &npv);         // number of vertices
+  inputTree->SetBranchAddress("vtype1pfmet",  &vtype1pfMET); // type-1 corrected pf MET
+  inputTree->SetBranchAddress("vrawpfmet",    &vrawpfMET);   // raw pf MET
+  inputTree->SetBranchAddress("vgenmet",      &vgenMET);     // generated MET
+  inputTree->SetBranchAddress("mt",           &mt);          // transverse mass
   inputTree->SetBranchAddress("nEvents",      &nEvents);
-  inputTree->SetBranchAddress("lep0",         &lep0);
-  inputTree->SetBranchAddress("lep1",         &lep1);
-  inputTree->SetBranchAddress("isLooseMuon0", &isLooseMuon0);
-  inputTree->SetBranchAddress("isSoftMuon0",  &isSoftMuon0);
-  inputTree->SetBranchAddress("isTightMuon0", &isTightMuon0);
-  inputTree->SetBranchAddress("isLooseMuon1", &isLooseMuon1);
-  inputTree->SetBranchAddress("isSoftMuon1",  &isSoftMuon1);
-  inputTree->SetBranchAddress("isTightMuon1", &isTightMuon1);
+  inputTree->SetBranchAddress("lep",          &lep);
            
   //
   // Declare histograms
   //
-  TH1D *hmu0pt = new TH1D("hmu0pt","Leading Muon pT",100,0,1000);
-        hmu0pt->GetYaxis()->SetTitle("Events / 10 GeV");
-        hmu0pt->GetYaxis()->SetTitleOffset(1.5);
-        hmu0pt->GetXaxis()->SetTitle("pT_{#mu} [GeV]");
-        hmu0pt->GetXaxis()->SetTitleOffset(1.2);
-  TH1D *hmu0eta = new TH1D("hmu0eta","Leading Muon Eta",100,-3.0,3.0);
-        hmu0eta->GetYaxis()->SetTitle("Events / 0.6");
-        hmu0eta->GetYaxis()->SetTitleOffset(1.5);
-        hmu0eta->GetXaxis()->SetTitle("#eta_{#mu}");
-        hmu0eta->GetXaxis()->SetTitleOffset(1.2);
-  TH1D *hmu0phi = new TH1D("hmu0phi","Leading Muon Phi",100,-3.5,3.5);
-        hmu0phi->GetYaxis()->SetTitle("Events / 0.7");
-        hmu0phi->GetYaxis()->SetTitleOffset(1.5);
-        hmu0phi->GetXaxis()->SetTitle("#phi_{#mu}");
-        hmu0phi->GetXaxis()->SetTitleOffset(1.2);
+  //
+  TH1D *hmuonPt = new TH1D("hmuonPt","pT of Muon Passing Tight Selection",100,0,400);
+        hmuonPt->GetYaxis()->SetTitle("Events / 4 GeV");
+        hmuonPt->GetYaxis()->SetTitleOffset(1.5);
+        hmuonPt->GetXaxis()->SetTitle("pT_{e} [GeV]");
+        hmuonPt->GetXaxis()->SetTitleOffset(1.2);
+  TH1D *hmuonEta = new TH1D("hmuonEta","Eta of Muon Passing Tight Selection",100,-3.0,3.0);
+        hmuonEta->GetYaxis()->SetTitle("Events / 0.6");
+        hmuonEta->GetYaxis()->SetTitleOffset(1.5);
+        hmuonEta->GetXaxis()->SetTitle("#eta_{e}");
+        hmuonEta->GetXaxis()->SetTitleOffset(1.2);
+  TH1D *hmuonPhi = new TH1D("hmuonPhi","Phi of Muon Passing Tight Selection",100,-3.5,3.5);
+        hmuonPhi->GetYaxis()->SetTitle("Events / 0.7");
+        hmuonPhi->GetYaxis()->SetTitleOffset(1.5);
+        hmuonPhi->GetXaxis()->SetTitle("#phi_{e}");
+        hmuonPhi->GetXaxis()->SetTitleOffset(1.2);
+  TH1D *hmt = new TH1D("hmt","Transverse Mass",100,0,150);
+        hmt->GetYaxis()->SetTitle("Events / 1.5 GeV");
+        hmt->GetYaxis()->SetTitleOffset(1.5);
+        hmt->GetXaxis()->SetTitle("m_{T} [GeV]");
+        hmt->GetXaxis()->SetTitleOffset(1.2);
+  TH1D *hnpv = new TH1D("hnpv","Number of Primary Vertices",35,-0.5,34.5);
+        hnpv->GetYaxis()->SetTitle("Events");
+        hnpv->GetYaxis()->SetTitleOffset(1.5);
+        hnpv->GetXaxis()->SetTitle("# of PV");
+        hnpv->GetXaxis()->SetTitleOffset(1.2);
   TH1D *htype1  = new TH1D("htype1","",100,0,150);
         htype1->SetStats(0);
         htype1->SetLineColor(1);
@@ -145,7 +168,7 @@ void plotWm(const TString inputFileName="Wmunu_p_select.root") {
   legphi->AddEntry(hraw,"Raw PF","l");
   legphi->AddEntry(hgen,"Generated","l");
 
-  Int_t totalEvents=0, nsel=0;
+  Int_t totalEvents=0;
 
   for(int kentry=0;kentry<inputTree->GetEntries();kentry++) {
     inputTree->GetEntry(kentry);
@@ -154,8 +177,8 @@ void plotWm(const TString inputFileName="Wmunu_p_select.root") {
     //
     // Fill histograms
     //
-    hmetx->Fill(nVtx,vtype1pfMET->Px());
-    hmety->Fill(nVtx,vtype1pfMET->Py());
+    hmetx->Fill(npv,vtype1pfMET->Px());
+    hmety->Fill(npv,vtype1pfMET->Py());
   }
 
   cout << "totalEvents is " << totalEvents << endl;
@@ -168,10 +191,12 @@ void plotWm(const TString inputFileName="Wmunu_p_select.root") {
   TH2D* hmetxfit = new TH2D("hmetxfit","MET_{x} v. Number of vertices",NVTXBINS,0,NVTXBINS,100,-25,5);
         hmetxfit->GetXaxis()->SetTitle("Number of vertices");
         hmetxfit->GetYaxis()->SetTitle("<MET_{x}> [GeV]");
+        hmetxfit->SetMarkerStyle(7);
         hmetxfit->SetMarkerSize(21);
   TH2D* hmetyfit = new TH2D("hmetyfit","MET_{y} v. Number of vertices",NVTXBINS,0,NVTXBINS,100,-25,5);
         hmetyfit->GetXaxis()->SetTitle("Number of vertices");
         hmetyfit->GetYaxis()->SetTitle("<MET_{y}> [GeV]");
+        hmetyfit->SetMarkerStyle(7);
         hmetyfit->SetMarkerSize(21);
   for(int jbin=1;jbin<hmetx->GetNbinsX()+1;jbin++) {
     hmetx_proj = hmetx->ProjectionY("metx_proj",jbin,jbin+1,"");
@@ -199,14 +224,6 @@ void plotWm(const TString inputFileName="Wmunu_p_select.root") {
   fliney->SetParameter(1,ypar1);
   hmetyfit->Fit(fliney);
 
-  std::cout << std::endl;
-  std::cout << "x fit parameter initial values: " << xpar0 << "," << xpar1 << std::endl;
-  std::cout << "x fit parameters final values: " << flinex->GetParameter(0) << "," << flinex->GetParameter(1) << std::endl;
-  std::cout << std::endl;
-  std::cout << "y fit parameter initial values: " << ypar0 << "," << ypar1 << std::endl;
-  std::cout << "y fit parameters final values: " << fliney->GetParameter(0) << "," << fliney->GetParameter(1) << std::endl;
-  std::cout << std::endl;
-
   // Correct the MET
   Double_t flinex0=flinex->GetParameter(0), flinex1=flinex->GetParameter(1);
   Double_t fliney0=fliney->GetParameter(0), fliney1=fliney->GetParameter(1);
@@ -216,24 +233,6 @@ void plotWm(const TString inputFileName="Wmunu_p_select.root") {
 
   for(int jentry=0;jentry<inputTree->GetEntries();jentry++) {
     inputTree->GetEntry(jentry);
-
-    //
-    // SELECTION PROCEDURE:
-    //  (1) Look for 1 good muon matched to trigger
-    //  (2) Reject event if another muon is present passing looser cuts
-    //
-    Bool_t passSel=kFALSE, passSel0=kFALSE, passSel1=kFALSE;
-    Int_t nLooseLep=0;
-    if(  fabs(lep0->Eta())<=2.4 && lep0->Pt()>=10 && isLooseMuon0  ) nLooseLep++;
-    if(  fabs(lep1->Eta())<=2.4 && lep1->Pt()>=10 && isLooseMuon1  ) nLooseLep++;
-    if(  nLooseLep>1  ) continue; // event not interesting if there are multiple muons passing the loose selection
-    if(  (fabs(lep0->Eta())<=ETA_CUT && lep0->Pt()>=PT_CUT)  ) passSel0=kTRUE;
-    if(  (fabs(lep1->Eta())<=ETA_CUT && lep1->Pt()>=PT_CUT)  ) passSel1=kTRUE;
-//    if(  passSel0 && passSel1  ) cout << "***ERROR - 2 muons passing the tight selection" << endl; // this could happen because nLooseLep depends on eta, pt, AND the loose ID
-    if(  passSel0 != passSel1  ) passSel=kTRUE;
-    if(  !passSel  ) continue; // event not interesting if there is no muon passing the tight selection
-
-    nsel++;
 
     type1x = vtype1pfMET->Px();
     type1y = vtype1pfMET->Py();
@@ -245,23 +244,21 @@ void plotWm(const TString inputFileName="Wmunu_p_select.root") {
     genphi = vgenMET->Phi();
     if(genphi>TMath::Pi())   genphi   -= 2*TMath::Pi();
 
-    corrMETx = type1x-flinex0-flinex1*nVtx;
-    corrMETy = type1y-fliney0-fliney1*nVtx;
+    corrMETx = type1x-flinex0-flinex1*npv;
+    corrMETy = type1y-fliney0-fliney1*npv;
     corrMET  = TMath::Sqrt(corrMETx*corrMETx + corrMETy*corrMETy);
     corrMETphi = TMath::ATan2(corrMETy,corrMETx);
 
     //
     // Fill histograms
     //
-    if(passSel0 && !passSel1) {
-      hmu0pt->Fill(lep0->Pt());
-      hmu0eta->Fill(lep0->Eta());
-      hmu0phi->Fill(lep0->Phi());
-    } else if (!passSel0 && passSel1) {
-      hmu0pt->Fill(lep1->Pt());
-      hmu0eta->Fill(lep1->Eta());
-      hmu0phi->Fill(lep1->Phi());
-    }
+
+    hmuonPt->Fill(lep->Pt());
+    hmuonEta->Fill(lep->Eta());
+    hmuonPhi->Fill(lep->Phi());
+    hmt->Fill(mt);
+    hnpv->Fill(npv);
+
     htype1->Fill(vtype1pfMET->Mod());
     htype1phi->Fill(type1phi);
     htype1corr->Fill(corrMET);
@@ -273,28 +270,25 @@ void plotWm(const TString inputFileName="Wmunu_p_select.root") {
 
   }
 
-  cout << "totalEvents is " << totalEvents << endl;
-  cout << "nsel is " << nsel << endl;
-
   //
   // Save plots
   //
-  TCanvas* cmu0pt = new TCanvas();
-  cmu0pt->cd();
-  cmu0pt->SetLogy();
-  hmu0pt->Draw();
-  cmu0pt->Print("mu0pt.png");
-  cmu0pt->Close();
-  TCanvas* cmu0eta = new TCanvas();
-  cmu0eta->cd();
-  hmu0eta->Draw();
-  cmu0eta->Print("mu0eta.png");
-  cmu0eta->Close();
-  TCanvas* cmu0phi = new TCanvas();
-  cmu0phi->cd();
-  hmu0phi->Draw();
-  cmu0phi->Print("mu0phi.png");
-  cmu0phi->Close();
+  TCanvas* cmuonPt = new TCanvas();
+  cmuonPt->cd();
+  cmuonPt->SetLogy();
+  hmuonPt->Draw();
+  cmuonPt->Print("muonPt.png");
+  cmuonPt->Close();
+  TCanvas* cmuonEta = new TCanvas();
+  cmuonEta->cd();
+  hmuonEta->Draw();
+  cmuonEta->Print("muonEta.png");
+  cmuonEta->Close();
+  TCanvas* cmuonPhi = new TCanvas();
+  cmuonPhi->cd();
+  hmuonPhi->Draw();
+  cmuonPhi->Print("muonPhi.png");
+  cmuonPhi->Close();
   TCanvas* cmet = new TCanvas();
   cmet->cd();
   hgen->Draw();
@@ -333,4 +327,5 @@ void plotWm(const TString inputFileName="Wmunu_p_select.root") {
   hmetyfit->Draw();
   cmetyfit->Print("metyfit.png");
   cmetyfit->Close();
+
 }
