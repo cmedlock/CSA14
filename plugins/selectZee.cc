@@ -13,8 +13,8 @@
 //
 // Original Author:  Catherine Aiko Medlock
 //         Created:  Tue, 22 Jul 2014 11:26:17 GMT
-//
-//
+// This code is just an adaptation of Kevin Sung's original code used for the 8 TeV analysis:
+// https://github.com/jaylawhorn/mitewk/blob/master/Selection/selectZee.C
 
 // system include files
 #include <memory>
@@ -33,6 +33,9 @@
 #include "DataFormats/PatCandidates/interface/Electron.h"
 #include "DataFormats/PatCandidates/interface/MET.h"
 #include "DataFormats/PatCandidates/interface/PackedCandidate.h"
+#include "DataFormats/GsfTrackReco/interface/GsfTrack.h"
+#include "DataFormats/EgammaCandidates/interface/GsfElectron.h"
+#include "DataFormats/EgammaCandidates/interface/GsfElectronFwd.h"
 
 #include "DataFormats/Math/interface/deltaR.h"
 
@@ -40,6 +43,7 @@
 #include <TFile.h>                  // file handle class
 #include <TTree.h>                  // class to access ntuples
 #include <TVector2.h>               // 2D vector class
+#include <TMath.h>
 
 //
 // class declaration
@@ -68,6 +72,7 @@ class selectZee : public edm::EDAnalyzer {
       edm::EDGetTokenT<pat::ElectronCollection> electronToken_;
       edm::EDGetTokenT<pat::METCollection> metToken_;
       edm::EDGetTokenT<pat::PackedCandidateCollection> pfToken_;
+      edm::EDGetTokenT<edm::View<reco::GsfElectron>> gsfelectronToken_;
 };
 
 //
@@ -101,48 +106,38 @@ bool Convert_Zee(unsigned int val,bool print=kFALSE)
 // Settings 
 //============================================================================================================== 
 
-const Double_t MASS_LOW  = 40;
-const Double_t MASS_HIGH = 200;
-const Double_t PT_CUT    = 20;
-const Double_t ETA_CUT   = 2.5;
-const Double_t ELE_MASS  = 0.000511;
+const Double_t ELE_MASS   = 0.000511;
+const Double_t TAG_PT_CUT = 25;
 
-const Double_t ECAL_GAP_LOW  = 1.4442;
-const Double_t ECAL_GAP_HIGH = 1.566;
+Double_t nsel_Zee=0, nselvar_Zee=0;
 
-Double_t nsel_Zee=0, nsel_Zeevar_Zee=0;
-
-TString outFilename_Zee = TString("Zee_select.root");
+TString outFilename_Zee = TString("selectZee.root");
 TFile *outFile_Zee = new TFile();
 TTree *outTree_Zee = new TTree();
 
 //
 // Declare output ntuple variables
 //
-// Initialize everything to -10 so that it is obvious if an object (such
-// as a Z or W generator level mother particle) doesn't exist
-//
-Int_t   nVtx_Zee;
-Float_t genVPt1_Zee=-10, genVPhi1_Zee=-10, genVy1_Zee=-10, genVMass1_Zee=-10;
-Float_t genVPt2_Zee=-10, genVPhi2_Zee=-10, genVy2_Zee=-10, genVMass2_Zee=-10;
+UInt_t  matchGen_Zee, npv_Zee;
+Float_t genVPdgID_Zee, genVPt_Zee, genVPhi_Zee, genVy_Zee, genVMass_Zee;
 Float_t scale1fb_Zee;
-Float_t rawpfMETpx_Zee, rawpfMETpy_Zee; // Will be used in vrawpfMET_Zee
+Float_t rawpfMETpx_Zee, rawpfMETpy_Zee;
 TVector2 vtype1pfMET_Zee, vrawpfMET_Zee, vgenMET_Zee;
-Float_t u1_Zee=-10, u2_Zee=-10;
-Int_t   q1_Zee=-10, q2_Zee=-10;
-Int_t   dummynEvents_Zee=0, nEvents_Zee=0;
-Float_t Ele1pt_Zee=-10, Ele1eta_Zee=-10, Ele1phi_Zee=-10; // Will be used in lep1_Zee
-Float_t Ele2pt_Zee=-10, Ele2eta_Zee=-10, Ele2phi_Zee=-10; // Will be used in lep2_Zee
-Float_t Elesc1pt_Zee=-10, Elesc1eta_Zee=-10, Elesc1phi_Zee=-10; // Will be used in sc1_Zee
-Float_t Elesc2pt_Zee=-10, Elesc2eta_Zee=-10, Elesc2phi_Zee=-10; // Will be used in sc2_Zee
-LorentzVector *dilep_Zee=0;
-LorentzVector *lep1_Zee=0, *lep2_Zee=0;
+Float_t mt_Zee, u1_Zee, u2_Zee;
+Int_t q1_Zee, q2_Zee;
+Int_t dummynEvents_Zee_Zee=0, nEvents_Zee=0;
+LorentzVector *dilep_Zee=0, *lep1_Zee=0, *lep2_Zee=0;
 LorentzVector *sc1_Zee=0, *sc2_Zee=0;
-///// electron specific /////
-Float_t pfChIso1_Zee=-10, pfGamIso1_Zee=-10, pfNeuIso1_Zee=-10;
-Float_t pfChIso2_Zee=-10, pfGamIso2_Zee=-10, pfNeuIso2_Zee=-10;
-Float_t isLooseEle1_Zee=-10, isTightEle1_Zee=-10;
-Float_t isLooseEle2_Zee=-10, isTightEle2_Zee=-10;
+Bool_t passEleLooseID1, passEleTightID1;
+Bool_t passEleLooseID2, passEleTightID2;
+Float_t dEtaIn1_Zee, dEtaIn2_Zee, dPhiIn1_Zee, dPhiIn2_Zee;
+Float_t full5x5_sIeIe1_Zee, full5x5_sIeIe2_Zee;
+Float_t hOverE1_Zee, hOverE2_Zee;
+Float_t d0vtx1_Zee, d0vtx2_Zee, dzvtx1_Zee, dzvtx2_Zee;
+Float_t EInvOverPInv1_Zee, EInvOverPInv2_Zee;
+Float_t relIsoWithDBeta1_Zee, relIsoWithDBeta2_Zee;
+Float_t vtxFitProb_Zee;
+UInt_t expectedMissingInnerHits1_Zee, expectedMissingInnerHits2_Zee;
 
 // Compute MC event weight_Zee_sel per 1/fb
 Double_t weight_Zee = 1;
@@ -159,6 +154,7 @@ selectZee::selectZee(const edm::ParameterSet& iConfig):
    pfToken_(consumes<pat::PackedCandidateCollection>(iConfig.getParameter<edm::InputTag>("pfCands")))
 {
    //now do what ever initialization is needed
+
 }
 
 
@@ -167,6 +163,7 @@ selectZee::~selectZee()
  
    // do anything here that needs to be done at desctruction time
    // (e.g. close files, deallocate resources etc.)
+
 }
 
 
@@ -178,136 +175,127 @@ selectZee::~selectZee()
 void
 selectZee::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
+
    using namespace edm;
 
-   isLooseEle1_Zee=-10; isTightEle1_Zee=-10;
-   isLooseEle2_Zee=-10; isTightEle2_Zee=-10;
+   dummynEvents_Zee_Zee++;
 
    Handle<reco::VertexCollection> vertices;
    iEvent.getByToken(vtxToken_, vertices);
-   // good vertex requirement
-   if (vertices->empty()) return; // skip the event if no PV found
-//   const reco::Vertex &PV = vertices->front();
-   nVtx_Zee = vertices->size();
+   // Good vertex requirement
+   if (vertices->empty()) return; // Skip the event if no PV found
+   const reco::Vertex &PV = vertices->front();
+   vtxFitProb_Zee = TMath::Prob(PV.chi2(),PV.ndof());
+   if(vtxFitProb_Zee <= 1e-6) return; // From CSA14 selection
 
    Handle<pat::ElectronCollection> electrons;
    iEvent.getByToken(electronToken_, electrons);
-   if(electrons->size()==0) return;   // skip the event if no electrons found
+   if(electrons->size()<2) return;// Skip the event if there is no possibility of both tag and probe leptons
 
-   dummynEvents_Zee++;
-
-   unsigned int idxEle1=-1, idxEle2=-1;
-   float maxElept=-1, secondmaxElept=-1;
-   // find the electron with the highest pT
+   // Look for tag lepton
+   unsigned int tagIdx=electrons->size();
+   Float_t tagPt=0;
+   // Float_t isTightEle=0;
+   // Bool_t passEleTightID=kFALSE;
    for (unsigned int jElectron=0;jElectron < electrons->size();jElectron++) {
      const pat::Electron &ele = (*electrons)[jElectron];
-     if     (maxElept==-1)                      { maxElept=ele.pt(); idxEle1=jElectron; }
-     else if(maxElept!=-1 && ele.pt()>maxElept) { maxElept=ele.pt(); idxEle1=jElectron; }
-   }
-   const pat::Electron &Ele1 = (*electrons)[idxEle1];
-   q1_Zee           = Ele1.charge();
-   Ele1pt_Zee       = Ele1.pt();
-   Ele1eta_Zee      = Ele1.eta();
-   Ele1phi_Zee      = Ele1.phi();
-   Elesc1pt_Zee     = Ele1.superCluster()->energy()*(Ele1.pt()/Ele1.p());
-   Elesc1eta_Zee    = Ele1.superCluster()->eta();
-   Elesc1phi_Zee    = Ele1.superCluster()->phi();
-   pfChIso1_Zee     = Ele1.chargedHadronIso();
-   pfGamIso1_Zee    = Ele1.photonIso();
-   pfNeuIso1_Zee    = Ele1.neutralHadronIso();
-   isLooseEle1_Zee  = Ele1.electronID("eidLoose");
-   isTightEle1_Zee  = Ele1.electronID("eidTight");
-   // get mother particle information
-   const reco::GenParticle* gen = Ele1.genLepton();
-   Bool_t foundGenV0 = kFALSE; // some events do not have a generated Z or W, this protects against a seg fault
-   if(gen!=NULL) {
-     const reco::Candidate* genCand = gen;
-     while(genCand!=NULL && genCand->numberOfMothers()==1) {
-       genCand = genCand->mother(0);
-       if( (  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV0 ) foundGenV0=kTRUE;
-       genVPt1_Zee   = genCand->pt();
-       genVPhi1_Zee  = genCand->phi();
-       genVy1_Zee    = genCand->y();
-       genVMass1_Zee = genCand->mass();
-     }
-     // mother particle should always be either a Z or a W
-     // if it isn't, trace back to the first daughter particle that is either a Z or a W
-     if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && foundGenV0) {
-       while( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) ) {
-         genCand = genCand->daughter(0);
-         genVPt1_Zee   = genCand->pt();
-         genVPhi1_Zee  = genCand->phi();
-         genVy1_Zee    = genCand->y();
-         genVMass1_Zee = genCand->mass();
-       }
-     }
-     // if there is no mother particle that is a Z or a W, mark this by saving the mother particle pT and phi both as -10
-     else if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV0) {
-       genVPt1_Zee   = -10;
-       genVPhi1_Zee  = -10;
-       genVy1_Zee    = -10;
-       genVMass1_Zee = -10;
-     }
-   }
-   // if there is > 1 electron, find the one with the second highest pT
-   if(electrons->size() > 1) {
-     for (unsigned int kElectron=0; kElectron < electrons->size();kElectron++) {
-       const pat::Electron &ele = (*electrons)[kElectron];
-       if(kElectron==idxEle1)                                                       continue;
-       else if(kElectron!=idxEle1 && secondmaxElept==-1)                            { secondmaxElept=ele.pt(); idxEle2=kElectron; }
-       else if(kElectron!=idxEle1 && secondmaxElept!=-1 && ele.pt()>secondmaxElept) { secondmaxElept=ele.pt(); idxEle2=kElectron; }
-     }
-     const pat::Electron &Ele2 = (*electrons)[idxEle2];
-     q2_Zee           = Ele2.charge();
-     Ele2pt_Zee       = Ele2.pt();
-     Ele2eta_Zee      = Ele2.eta();
-     Ele2phi_Zee      = Ele2.phi();
-     Elesc2pt_Zee     = Ele2.superCluster()->energy()*(Ele2.pt()/Ele2.p());
-     Elesc2eta_Zee    = Ele2.superCluster()->eta();
-     Elesc2phi_Zee    = Ele2.superCluster()->phi();
-     pfChIso2_Zee     = Ele2.chargedHadronIso();
-     pfGamIso2_Zee    = Ele2.photonIso();
-     pfNeuIso2_Zee    = Ele2.neutralHadronIso();
-     isLooseEle2_Zee  = Ele2.electronID("eidLoose");
-     isTightEle2_Zee  = Ele2.electronID("eidTight");
-     // get mother particle information
-     const reco::GenParticle* gen = Ele2.genLepton();
-     Bool_t foundGenV1 = kFALSE; // some events do not have a generated Z or W, this protects against a seg fault
-     if(gen!=NULL) {
-       const reco::Candidate* genCand = gen;
-       while(genCand!=NULL && genCand->numberOfMothers()==1) {
-         genCand = genCand->mother(0);
-         if( (  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV1 ) foundGenV1=kTRUE;
-         genVPt2_Zee   = genCand->pt();
-         genVPhi2_Zee  = genCand->phi();
-         genVy2_Zee    = genCand->y();
-         genVMass2_Zee = genCand->mass();
-       }
-       // mother particle should always be either a Z or a W
-       // if it isn't, trace back to the first daughter particle that is either a Z or a W
-       if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && foundGenV1) {
-         while( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) ) {
-           genCand = genCand->daughter(0);
-           genVPt2_Zee   = genCand->pt();
-           genVPhi2_Zee  = genCand->phi();
-           genVy2_Zee    = genCand->y();
-           genVMass2_Zee = genCand->mass();
-         }
-       }
-       // if there is no mother particle that is a Z or a W, mark this by saving the mother particle pT and phi both as -10
-       else if( !(  fabs(genCand->pdgId())==23 || fabs(genCand->pdgId())==24  ) && !foundGenV1) {
-         genVPt2_Zee   = -10;
-         genVPhi2_Zee  = -10;
-         genVy2_Zee    = -10;
-         genVMass2_Zee = -10;
-       }
-     }
-   }
 
-   LorentzVector vlep1_Zee(Ele1pt_Zee, Ele1eta_Zee, Ele1phi_Zee, ELE_MASS);
-   LorentzVector vlep2_Zee(Ele2pt_Zee, Ele2eta_Zee, Ele2phi_Zee, ELE_MASS);
-   LorentzVector vsc1_Zee(Elesc1pt_Zee, Elesc1eta_Zee, Elesc1phi_Zee, ELE_MASS);
-   LorentzVector vsc2_Zee(Elesc2pt_Zee, Elesc2eta_Zee, Elesc2phi_Zee, ELE_MASS);
+     // isTightEle = ele.electronID("eidTight"); passEleTightID = Convert_Zee(isTightEle);
+
+     //
+     // The calculations below were taken from:
+     // https://github.com/lgray/cmssw/blob/common_isolation_selection_70X/TestElectronID/ElectronIDAnalyzer/plugins/ElectronIDAnalyzer.cc
+     //
+     // ID and matching
+     Float_t dEtaIn = ele.deltaEtaSuperClusterTrackAtVtx();
+     Float_t dPhiIn = ele.deltaPhiSuperClusterTrackAtVtx();
+     Float_t hOverE = ele.hcalOverEcal();
+     Float_t full5x5_sIeIe = ele.full5x5_sigmaIetaIeta();
+     // Impact parameters
+     Float_t d0vtx = (-1)*ele.gsfTrack()->dxy(PV.position());
+     Float_t dzvtx = (-1)*ele.gsfTrack()->dz(PV.position());
+     // |1/E - 1/p|
+     Float_t EInvOverPInv = 0;
+     if(ele.ecalEnergy()==0 || !std::isfinite(ele.ecalEnergy())) EInvOverPInv = 1e30;
+     else EInvOverPInv = fabs(1.0/ele.ecalEnergy()-ele.eSuperClusterOverP()/ele.ecalEnergy());
+     // Isolation
+     reco::GsfElectron::PflowIsolationVariables pfIso = ele.pfIsolationVariables();
+     Float_t absiso = pfIso.sumChargedHadronPt + std::max(0.0,pfIso.sumNeutralHadronEt+pfIso.sumPhotonEt-0.5*pfIso.sumPUPt);
+     Float_t relIsoWithDBeta = absiso/ele.pt();
+     // Conversion rejection - vertex fit probability and missing hits
+     Float_t expectedMissingInnerHits = ele.gsfTrack()->hitPattern().numberOfHits(reco::HitPattern::MISSING_INNER_HITS);
+
+    // CSA14 selection - barrel cuts
+    if( fabs(ele.superCluster()->eta()) <= 1.479 ) {
+      if( fabs(dEtaIn)  >= 0.02   ) continue;
+      if( fabs(dPhiIn)  >= 0.2579 ) continue;
+      if( full5x5_sIeIe >= 0.0125 ) continue;
+      if( hOverE        >= 0.2564 ) continue;
+      if( fabs(d0vtx)        >= 0.025  ) continue;
+      if( fabs(dzvtx)        >= 0.5863 ) continue;
+      if( fabs(EInvOverPInv) >= 0.1508 ) continue;
+      if( relIsoWithDBeta    >= 0.3313 ) continue;
+      if( expectedMissingInnerHits > 2 ) continue;
+      tagPt  = ele.pt();
+      tagIdx = jElectron;
+    }
+    // CSA14 selection - endcap cuts
+    else if( 1.479 < fabs(ele.superCluster()->eta()) && fabs(ele.superCluster()->eta()) < 2.5 ) {
+      if( fabs(dEtaIn)  >= 0.0141 ) continue;
+      if( fabs(dPhiIn)  >= 0.2591 ) continue;
+      if( full5x5_sIeIe >= 0.0371 ) continue;
+      if( hOverE        >= 0.1335 ) continue;
+      if( fabs(d0vtx)        >= 0.2232 ) continue;
+      if( fabs(dzvtx)        >= 0.9513 ) continue;
+      if( fabs(EInvOverPInv) >= 0.1542 ) continue;
+      if( relIsoWithDBeta    >= 0.3816 ) continue;
+      if( expectedMissingInnerHits > 3 ) continue;
+      tagPt  = ele.pt();
+      tagIdx = jElectron;
+    }
+    else {
+      tagPt  = tagPt;
+      tagIdx = tagIdx;
+    }
+
+   }
+   if(tagIdx==electrons->size()) return; // Skip event if there is no tag lepton
+   const pat::Electron &tag = (*electrons)[tagIdx];
+
+   nsel_Zee    += weight_Zee;
+   nselvar_Zee += weight_Zee*weight_Zee;
+
+   // Look for probe lepton
+   unsigned int probeIdx=0;
+   Float_t probePt=0;
+   for (unsigned int kElectron=0;kElectron < electrons->size();kElectron++) {
+     if(kElectron==tagIdx) continue;
+     const pat::Electron &ele = (*electrons)[kElectron];
+     if(ele.pt()>probePt) {
+       probePt  = ele.pt();
+       probeIdx = kElectron;
+     }
+   }
+   const pat::Electron &probe = (*electrons)[probeIdx];
+
+   LorentzVector vLep1(tag.pt(),tag.eta(),tag.phi(),ELE_MASS);
+   LorentzVector vLep2(probe.pt(),probe.eta(),probe.phi(),ELE_MASS);
+   LorentzVector vDilep = vLep1 + vLep2;
+   LorentzVector vSC1(tag.superCluster()->energy(),tag.superCluster()->eta(),tag.superCluster()->phi(),ELE_MASS);
+   LorentzVector vSC2(probe.superCluster()->energy(),probe.superCluster()->eta(),probe.superCluster()->phi(),ELE_MASS);
+
+   // Perform matching of dileptons to GEN leptons from Z decay
+   const reco::GenParticle* gen1 = tag.genParticle();
+   const reco::GenParticle* gen2 = probe.genParticle();
+   Bool_t hasGenMatch = kFALSE;
+   if(gen1!=NULL && gen2!=NULL) {
+     Int_t id1 = gen1->pdgId(), id2 = gen2->pdgId();
+     Float_t eta1 = gen1->eta(), eta2 = gen2->eta();
+     Float_t phi1 = gen1->phi(), phi2 = gen2->phi();
+     Bool_t match1 = ( fabs(id1)==11 && sqrt((tag.eta()-eta1)*(tag.eta()-eta1)+(tag.phi()-phi1)*(tag.phi()-phi1)) < 0.5 );
+     Bool_t match2 = ( fabs(id2)==11 && sqrt((probe.eta()-eta2)*(probe.eta()-eta2)+(probe.phi()-phi2)*(probe.phi()-phi2)) < 0.5 );
+     if(match1 && match2) hasGenMatch = kTRUE;
+   }
 
    // Save MET information
 
@@ -319,7 +307,7 @@ selectZee::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    iEvent.getByToken(pfToken_, pfs);
    rawpfMETpx_Zee=0;
    rawpfMETpy_Zee=0;
-   // loop on PF candidates to calculate sum of Et's
+   // Loop on PF candidates to calculate sum of Et's
    for(unsigned int jcand=0; jcand < pfs->size(); jcand++) {
      const pat::PackedCandidate &pf = (*pfs)[jcand];
      rawpfMETpx_Zee -= pf.px();
@@ -331,41 +319,77 @@ selectZee::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    vgenMET_Zee.Set(met.genMET()->px(),met.genMET()->py());
 
    //
-   // SELECTION PROCEDURE:
-   //  (1) Find a "tag" electron that passes the tight selection
-   //  (2) Find a Supercluster "probe" electron which gives a dilepton mass along with the tag inside the Z-mass window
-   //
-   Bool_t foundTag=kFALSE, foundProbe=kFALSE;
-   Bool_t inECALgap0=kFALSE, inECALgap1=kFALSE;
-   // Find tag electron
-   if(  fabs(vsc1_Zee.Eta())>=ECAL_GAP_LOW && fabs(vsc1_Zee.Eta())<=ECAL_GAP_HIGH  ) inECALgap0=kTRUE; // check ECAL gap
-   if(  !inECALgap0 && fabs(vsc1_Zee.Eta())<=ETA_CUT && vsc1_Zee.Pt()>=PT_CUT && Convert_Zee(isLooseEle1_Zee)  ) foundTag=kTRUE;
-   if(  foundTag==kFALSE  ) return; // event not interesting if there is no tag electron
-   LorentzVector vTag_Zee(vlep1_Zee.Pt(),vlep1_Zee.Eta(),vlep1_Zee.Phi(),ELE_MASS); lep1_Zee = &vTag_Zee;
-   LorentzVector vTagSC_Zee(vsc1_Zee.Pt(),vsc1_Zee.Eta(),vsc1_Zee.Phi(),ELE_MASS);  sc1_Zee  = &vTagSC_Zee;
-   // Find probe electron
-   if(  fabs(vsc2_Zee.Eta())>=ECAL_GAP_LOW && fabs(vsc2_Zee.Eta())<=ECAL_GAP_HIGH  ) inECALgap1=kTRUE;
-   if(  !inECALgap1 && fabs(vsc2_Zee.Eta())<=ETA_CUT && vsc2_Zee.Pt()>=PT_CUT  ) foundProbe=kTRUE;
-   if(  foundProbe==kFALSE  ) return; // event not interesting if there is no probe electron
-   LorentzVector vProbe_Zee(vlep2_Zee.Pt(),vlep2_Zee.Eta(),vlep2_Zee.Phi(),ELE_MASS); lep2_Zee = &vProbe_Zee;
-   LorentzVector vProbeSC_Zee(vsc2_Zee.Pt(),vsc2_Zee.Eta(),vsc2_Zee.Phi(),ELE_MASS);  sc2_Zee  = &vProbeSC_Zee;
-   // Mass window
-   LorentzVector vdilep_Zee = vTag_Zee + vProbe_Zee; dilep_Zee = &vdilep_Zee;
-   TVector2 vdilepPt_Zee(vTag_Zee.px()+vProbe_Zee.px(),vTag_Zee.py()+vProbe_Zee.py());
-//   if((vdilep_Zee.M()<MASS_LOW) || (vdilep_Zee.M()>MASS_HIGH)) return;
-
-   // Calculate hadronic recoil
-   TVector2 uT  = -1*(vdilepPt_Zee+vtype1pfMET_Zee);
-   TVector2 vu1 = uT.Proj(vdilepPt_Zee); u1_Zee = vu1.Mod();
-   TVector2 vu2 = uT-u1_Zee; u2_Zee = vu2.Mod();
-
-   nsel_Zee    += weight_Zee;
-   nsel_Zeevar_Zee += weight_Zee*weight_Zee;
-   scale1fb_Zee = weight_Zee;
-
-   //
    // Fill tree
    //
+   matchGen_Zee  = hasGenMatch ? 1 : 0;
+   npv_Zee       = vertices->size();
+   genVPdgID_Zee = 0;
+   genVPt_Zee    = 0;
+   genVPhi_Zee   = 0;
+   genVy_Zee     = 0;
+   genVMass_Zee  = 0;
+   u1_Zee        = 0;
+   u2_Zee        = 0;
+   // Generator level information
+   const reco::GenParticle* genLep = tag.genLepton();
+   if(genLep!=NULL) {
+     const reco::Candidate* mother = genLep->mother(0);
+     genVPdgID_Zee = mother->pdgId();
+     genVPt_Zee    = mother->pt();
+     genVPhi_Zee   = mother->phi();
+     genVy_Zee     = mother->y();
+     genVMass_Zee  = mother->mass();
+     TVector2 vVPt(genVPt_Zee*cos(genVPhi_Zee),genVPt_Zee*sin(genVPhi_Zee));
+     TVector2 vLepPt(vLep1.Px(),vLep1.Py());
+     TVector2 vU = -1.0*(vtype1pfMET_Zee+vLepPt);
+     u1_Zee = (vVPt.Px()*vU.Px()+vVPt.Py()*vU.Py())/genVPt_Zee; // u1_Zee = (pT . u)/|pT|
+     u2_Zee = (vVPt.Px()*vU.Px()-vVPt.Py()*vU.Py())/genVPt_Zee; // u1_Zee = (pT x u)/|pT|
+   }
+   // 4-vectors and pre-implemented ID's
+   scale1fb_Zee = weight_Zee;
+   mt_Zee       = sqrt(2.0*vLep1.Pt()*vtype1pfMET_Zee.Mod()*(1.0-cos(vLep1.Phi()-vtype1pfMET_Zee.Phi())));
+   q1_Zee       = tag.charge();
+   q2_Zee       = probe.charge();
+   lep1_Zee     = &vLep1;
+   lep2_Zee     = &vLep2;
+   dilep_Zee    = &vDilep;
+   sc1_Zee      = &vSC1;
+   sc2_Zee      = &vSC2;
+   Float_t isLooseEle1 = tag.electronID("eidLoose");   passEleLooseID1 = Convert_Zee(isLooseEle1);
+   Float_t isTightEle1 = tag.electronID("eidTight");   passEleTightID1 = Convert_Zee(isTightEle1);
+   Float_t isLooseEle2 = probe.electronID("eidLoose"); passEleLooseID2 = Convert_Zee(isLooseEle2);
+   Float_t isTightEle2 = probe.electronID("eidTight"); passEleTightID2 = Convert_Zee(isTightEle2);
+   // ID and matching
+   dEtaIn1_Zee   = tag.deltaEtaSuperClusterTrackAtVtx();
+   dEtaIn2_Zee   = probe.deltaEtaSuperClusterTrackAtVtx();
+   dPhiIn1_Zee   = tag.deltaPhiSuperClusterTrackAtVtx();
+   dPhiIn2_Zee   = probe.deltaPhiSuperClusterTrackAtVtx();
+   hOverE1_Zee   = tag.hcalOverEcal();
+   hOverE2_Zee   = probe.hcalOverEcal();
+   full5x5_sIeIe1_Zee = tag.full5x5_sigmaIetaIeta();
+   full5x5_sIeIe2_Zee = probe.full5x5_sigmaIetaIeta();
+   // Impact parameters
+   d0vtx1_Zee    = (-1)*tag.gsfTrack()->dxy(PV.position());
+   d0vtx2_Zee    = (-1)*probe.gsfTrack()->dxy(PV.position());
+   dzvtx1_Zee    = (-1)*tag.gsfTrack()->dz(PV.position());
+   dzvtx2_Zee    = (-1)*probe.gsfTrack()->dz(PV.position());
+   // |1/E - 1/p|
+   if(tag.ecalEnergy()==0 || !std::isfinite(tag.ecalEnergy())) EInvOverPInv1_Zee = 1e30;
+   else EInvOverPInv1_Zee = fabs(1.0/tag.ecalEnergy()-tag.eSuperClusterOverP()/tag.ecalEnergy());
+   if(probe.ecalEnergy()==0 || !std::isfinite(probe.ecalEnergy())) EInvOverPInv2_Zee = 1e30;
+   else EInvOverPInv2_Zee = fabs(1.0/probe.ecalEnergy()-probe.eSuperClusterOverP()/probe.ecalEnergy());
+   // Isolation
+   reco::GsfElectron::PflowIsolationVariables pfIso1 = tag.pfIsolationVariables();
+   Float_t absiso1 = pfIso1.sumChargedHadronPt + std::max(0.0,pfIso1.sumNeutralHadronEt+pfIso1.sumPhotonEt-0.5*pfIso1.sumPUPt);
+   relIsoWithDBeta1_Zee = absiso1/tag.pt();
+   reco::GsfElectron::PflowIsolationVariables pfIso2 = probe.pfIsolationVariables();
+   Float_t absiso2 = pfIso2.sumChargedHadronPt + std::max(0.0,pfIso2.sumNeutralHadronEt+pfIso2.sumPhotonEt-0.5*pfIso2.sumPUPt);
+   relIsoWithDBeta2_Zee = absiso2/probe.pt();
+   // Conversion rejection - vertex fit probability and missing hits
+   vtxFitProb_Zee = TMath::Prob(PV.chi2(),PV.ndof());
+   expectedMissingInnerHits1_Zee = tag.gsfTrack()->hitPattern().numberOfHits(reco::HitPattern::MISSING_INNER_HITS);
+   expectedMissingInnerHits2_Zee = probe.gsfTrack()->hitPattern().numberOfHits(reco::HitPattern::MISSING_INNER_HITS);
+
    outTree_Zee->Fill();
 
 #ifdef THIS_IS_AN_EVENT_EXAMPLE
@@ -395,69 +419,75 @@ selectZee::beginJob()
   outFile_Zee = new TFile(outFilename_Zee,"RECREATE");
   outTree_Zee = new TTree("Events","Events");
 
-  outTree_Zee->Branch("nVtx",          &nVtx_Zee,          "nVtx/I");         // number of vertices
-  outTree_Zee->Branch("genVPt1",       &genVPt1_Zee,       "genVPt1/F");      // GEN boson pT  (signal MC)  (mother of first lepton )
-  outTree_Zee->Branch("genVPhi1",      &genVPhi1_Zee,      "genVPhi1/F");     // GEN boson phi (signal MC)  (mother of first lepton )
-  outTree_Zee->Branch("genVy1",        &genVy1_Zee,        "genVy1/F");       // GEN boson rapidity (signal MC)  (mother of first lepton )
-  outTree_Zee->Branch("genVMass1",     &genVMass1_Zee,     "genVMass1/F");    // GEN boson mass (signal MC) (mother of first lepton )
-  outTree_Zee->Branch("genVPt2",       &genVPt2_Zee,       "genVPt2/F");      // GEN boson pT  (signal MC)  (mother of second lepton)
-  outTree_Zee->Branch("genVPhi2",      &genVPhi2_Zee,      "genVPhi2/F");     // GEN boson phi (signal MC)  (mother of second lepton)
-  outTree_Zee->Branch("genVy2",        &genVy2_Zee,        "genVy2/F");       // GEN boson rapidity (signal MC)  (mother of second lepton)
-  outTree_Zee->Branch("genVMass2",     &genVMass2_Zee,     "genVMass2/F");    // GEN boson mass (signa MC)  (mother of second lepton)
-  outTree_Zee->Branch("scale1fb",      &scale1fb_Zee,      "scale1fb/F");     // event weight_Zee per 1/fb (MC)
-  outTree_Zee->Branch("vtype1pfMET",   "TVector2",         &vtype1pfMET_Zee);     // type-1 corrected PF MET
-  outTree_Zee->Branch("vrawpfMET",     "TVector2",         &vrawpfMET_Zee);       // raw PF MET
-  outTree_Zee->Branch("vgenMET",       "TVector2",         &vgenMET_Zee);         // generated MET
-  outTree_Zee->Branch("u1",            &u1_Zee,            "u1/F");           // parallel component of recoil
-  outTree_Zee->Branch("u2",            &u2_Zee,            "u2/F");           // perpendicular component of recoil
-  outTree_Zee->Branch("q1",            &q1_Zee,            "q1/I");           // lepton charge (first lepton )
-  outTree_Zee->Branch("q2",            &q2_Zee,            "q2/I");           // lepton charge (second lepton)
-  outTree_Zee->Branch("nEvents",       &nEvents_Zee,       "nEvents/I");      // events in MC file
-  outTree_Zee->Branch("dilep","ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &dilep_Zee);  // dilepton 4-vector
-  outTree_Zee->Branch("lep1", "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &lep1_Zee);   // lepton 4-vector (first lepton )
-  outTree_Zee->Branch("lep2", "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &lep2_Zee);   // lepton 4-vector (second lepton)
-  outTree_Zee->Branch("sc1",  "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &sc1_Zee);    // supercluster 4-vector (first lepton )
-  outTree_Zee->Branch("sc2",  "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &sc2_Zee);    // supercluster 4-vector (second lepton)
-  ///// electron specific /////
-  outTree_Zee->Branch("pfChIso1",     &pfChIso1_Zee,    "pfChIso1/F");      // PF charged hadron isolation of lepton (first lepton )
-  outTree_Zee->Branch("pfGamIso1",    &pfGamIso1_Zee,   "pfGamIso1/F");     // PF photon isolation of lepton         (first lepton )
-  outTree_Zee->Branch("pfNeuIso1",    &pfNeuIso1_Zee,   "pfNeuIso1/F");     // PF neutral hadron isolation of lepton (first lepton )
-  outTree_Zee->Branch("pfChIso2",     &pfChIso2_Zee,    "pfChIso2/F");      // PF charged hadron isolation of lepton (second lepton)
-  outTree_Zee->Branch("pfGamIso2",    &pfGamIso2_Zee,   "pfGamIso2/F");     // PF photon isolation of lepton         (second lepton)
-  outTree_Zee->Branch("pfNeuIso2",    &pfNeuIso2_Zee,   "pfNeuIso2/F");     // PF neutral hadron isolation of lepton (second lepton)
-  outTree_Zee->Branch("isLooseEle1",  &isLooseEle1_Zee, "isLooseEle1/F");   // loose electron ID (first lepton )
-  outTree_Zee->Branch("isTightEle1",  &isTightEle1_Zee, "isTightEle1/F");   // tight electron ID (first lepton )
-  outTree_Zee->Branch("isLooseEle2",  &isLooseEle2_Zee, "isLooseEle2/F");   // loose electron ID (second lepton)
-  outTree_Zee->Branch("isTightEle2",  &isTightEle2_Zee, "isTightEle2/F");   // tight electron ID (second lepton)
+  outTree_Zee->Branch("matchGen",      &matchGen_Zee,      "matchGen/i");         // event has both leptons matched to MC Z->ll
+  outTree_Zee->Branch("npv",           &npv_Zee,           "npv/I");              // number of primary vertices
+  outTree_Zee->Branch("genVPt",        &genVPt_Zee,        "genVPt/F");           // GEN boson pT (signal MC)
+  outTree_Zee->Branch("genVPhi",       &genVPhi_Zee,       "genVPhi/F");          // GEN boson phi (signal MC)
+  outTree_Zee->Branch("genVy",         &genVy_Zee,         "genVy/F");            // GEN boson rapidity (signal MC)
+  outTree_Zee->Branch("genVMass",      &genVMass_Zee,      "genVMass/F");         // GEN boson mass (signal MC)
+  outTree_Zee->Branch("scale1fb",      &scale1fb_Zee,      "scale1fb/F");         // event weight_Zee per 1/fb (MC)
+  outTree_Zee->Branch("vtype1pfmet",   "TVector2",         &vtype1pfMET_Zee);     // type-1 corrected pf MET
+  outTree_Zee->Branch("vrawpfmet",     "TVector2",         &vrawpfMET_Zee);       // raw pf MET
+  outTree_Zee->Branch("vgenmet",       "TVector2",         &vgenMET_Zee);         // generated MET
+  outTree_Zee->Branch("mt",            &mt_Zee,            "mt/F");               // transverse mass
+  outTree_Zee->Branch("u1",            &u1_Zee,            "u1/F");               // parallel component of recoil
+  outTree_Zee->Branch("u2",            &u2_Zee,            "u2/F");               // perpendicular component of recoil 
+  outTree_Zee->Branch("q1",            &q1_Zee,            "q1/I");               // tag lepton charge
+  outTree_Zee->Branch("q2",            &q2_Zee,            "q2/I");               // probe lepton charge
+  outTree_Zee->Branch("nEvents",       &nEvents_Zee,       "nEvents_Zee/I");   // events in MC file
+  outTree_Zee->Branch("dilep", "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &dilep_Zee); // dilep_Zeeton 4-vector
+  outTree_Zee->Branch("lep1",  "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &lep1_Zee);  // tag lepton 4-vector
+  outTree_Zee->Branch("lep2",  "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &lep2_Zee);  // probe lepton 4-vector
+  outTree_Zee->Branch("sc1",   "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &sc1_Zee);   // tag supercluster 4-vector
+  outTree_Zee->Branch("sc2",   "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &sc2_Zee);   // probe supercluster 4-vector
+  outTree_Zee->Branch("passEleLooseID1",  &passEleLooseID1,      "passEleLooseID1/O");  // tag lepton loose electron ID
+  outTree_Zee->Branch("passEleTightID1",  &passEleTightID1,      "passEleTightID1/O");  // tag lepton tight electron ID
+  outTree_Zee->Branch("passEleLooseID2",  &passEleLooseID2,      "passEleLooseID2/O");  // probe lepton loose electron ID
+  outTree_Zee->Branch("passEleTightID2",  &passEleTightID2,      "passEleTightID2/O");  // probe lepton tight electron ID
+  outTree_Zee->Branch("dEtaIn1",          &dEtaIn1_Zee,          "dEtaIn1/F");
+  outTree_Zee->Branch("dEtaIn2",          &dEtaIn2_Zee,          "dEtaIn2/F");
+  outTree_Zee->Branch("dPhiIn1",          &dPhiIn1_Zee,          "dPhiIn1/F");
+  outTree_Zee->Branch("dPhiIn2",          &dPhiIn2_Zee,          "dPhiIn2/F");
+  outTree_Zee->Branch("full5x5_sIeIe1",   &full5x5_sIeIe1_Zee,   "full5x5_sIeIe1/F");
+  outTree_Zee->Branch("full5x5_sIeIe2",   &full5x5_sIeIe2_Zee,   "full5x5_sIeIe2/F");
+  outTree_Zee->Branch("hOverE1",          &hOverE1_Zee,          "hOverE1/F");
+  outTree_Zee->Branch("hOverE2",          &hOverE2_Zee,          "hOverE2/F");
+  outTree_Zee->Branch("d0vtx1",           &d0vtx1_Zee,           "d0vtx1/F");
+  outTree_Zee->Branch("d0vtx2",           &d0vtx2_Zee,           "d0vtx2/F");
+  outTree_Zee->Branch("dzvtx1",           &dzvtx1_Zee,           "dzvtx1/F");
+  outTree_Zee->Branch("dzvtx2",           &dzvtx2_Zee,           "dzvtx2/F");
+  outTree_Zee->Branch("EInvOverPInv1",    &EInvOverPInv1_Zee,    "EInvOverPInv1/F");
+  outTree_Zee->Branch("EInvOverPInv2",    &EInvOverPInv2_Zee,    "EInvOverPInv2/F");
+  outTree_Zee->Branch("relIsoWithDBeta1", &relIsoWithDBeta1_Zee, "relIsoWithDBeta1/F");
+  outTree_Zee->Branch("relIsoWithDBeta2", &relIsoWithDBeta2_Zee, "relIsoWithDBeta2/F");
+  outTree_Zee->Branch("vtxFitProb",       &vtxFitProb_Zee,       "vtxFitProb/F");
+  outTree_Zee->Branch("expectedMissingInnerHits1", &expectedMissingInnerHits1_Zee, "expectedMissingInnerHits1/I");
+  outTree_Zee->Branch("expectedMissingInnerHits2", &expectedMissingInnerHits2_Zee, "expectedMissingInnerHits2/I");
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
 void 
 selectZee::endJob() 
 {
+
    // The only information in the last entry of the tree is the total number of events
    // that were processed (not the same as the total number of events selected).
-   nVtx_Zee = -10;
-   genVPt1_Zee = -10; genVPhi1_Zee = -10;
-   genVPt2_Zee = -10; genVPhi2_Zee = -10;
-   scale1fb_Zee = -10;
-   vtype1pfMET_Zee.Set(-10.0,-10.0);
-   vrawpfMET_Zee.Set(-10.0,-10.0);
-   vgenMET_Zee.Set(-10.0,-10.0);
-   q1_Zee = -10; q2_Zee = -10;
-   nEvents_Zee = dummynEvents_Zee;
-   LorentzVector dummyLep(-10, -10, -10, -10);
-   lep1_Zee = &dummyLep;
-   lep2_Zee = &dummyLep;
-   sc1_Zee = &dummyLep;
-   sc2_Zee = &dummyLep;
-   pfChIso1_Zee = -10; pfGamIso1_Zee = -10; pfNeuIso1_Zee = -10;
-   pfChIso2_Zee = -10; pfGamIso2_Zee = -10; pfNeuIso2_Zee = -10;
-   isLooseEle1_Zee = kFALSE; isTightEle1_Zee = kFALSE;
-   isLooseEle2_Zee = kFALSE; isTightEle2_Zee = kFALSE;
+   npv_Zee=0;
+   scale1fb_Zee=0;
+   vtype1pfMET_Zee.Set(0.0,0.0);
+   vrawpfMET_Zee.Set(0.0,0.0);
+   vgenMET_Zee.Set(0.0,0.0);
+   u1_Zee=0; u2_Zee=0;
+   q1_Zee=0; q2_Zee=0;
+   nEvents_Zee = dummynEvents_Zee_Zee;
+   dilep_Zee=0; lep1_Zee=0; lep2_Zee=0;
+   sc1_Zee=0; sc2_Zee=0;
+   passEleLooseID1=kFALSE, passEleTightID1=kFALSE;
+   passEleLooseID2=kFALSE, passEleTightID2=kFALSE;
+
    outTree_Zee->Fill();
 
-   std::cout << nsel_Zee << " +/- " << sqrt(nsel_Zeevar_Zee) << " per 1/fb" << std::endl;
+   std::cout << nsel_Zee << " +/- " << sqrt(nselvar_Zee) << " per 1/fb" << std::endl;
    std::cout << "endJob: nEvents_Zee is " << nEvents_Zee << std::endl;
    outFile_Zee->Write();
    outFile_Zee->Close();
@@ -470,8 +500,7 @@ selectZee::endJob()
   std::cout << "* SUMMARY" << std::endl;
   std::cout << "*--------------------------------------------------" << std::endl;
   std::cout << "Z -> e e" << std::endl;
-  std::cout << " pT > " << PT_CUT << std::endl;
-  std::cout << " |eta| < " << ETA_CUT << std::endl;
+  std::cout << " pT > " << TAG_PT_CUT << std::endl;
   std::cout << std::endl;
 
   std::cout << std::endl;
