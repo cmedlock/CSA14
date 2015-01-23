@@ -76,23 +76,6 @@ class selectWm : public edm::EDAnalyzer {
 
 typedef ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> > LorentzVector;
 
-// Convert int to binary value
-bool Convert_Wm(unsigned int val,bool print=kFALSE)
-{
-   unsigned int mask = 1 << (sizeof(int) * 8 - 1);
-   bool lastDigit;
-   for(unsigned int i = 0; i < sizeof(int) * 8; i++)
-   {
-      if( (val & mask) == 0 ) {
-        lastDigit=0;
-      } else {
-        lastDigit=1;
-      }
-      mask >>= 1;
-   }
-   return lastDigit;
-}
-
 //
 // static data member definitions
 //
@@ -105,34 +88,27 @@ const Double_t PT_CUT    = 20;
 const Double_t ETA_CUT   = 2.4;
 const Double_t MUON_MASS = 0.105658369;
 
-Double_t nsel_Wm=0, nselvar_Wm=0;
+Double_t nsel_Wm=0, eventCounter_Wm=0;
 
-TString outFilename_Wm = TString("Wmunu_select.root");
+TString outFilename_Wm = TString("selectWm.root");
 TFile *outFile_Wm = new TFile();
 TTree *outTree_Wm = new TTree();
 
 //
 // Declare output ntuple variables
 //
-UInt_t  npv_Wm;
-Float_t genVPdgID_Wm, genVPt_Wm, genVPhi_Wm, genVy_Wm, genVMass_Wm;
-Float_t genLepPdgID_Wm, genLepPt_Wm, genLepPhi_Wm;
-Float_t scale1fb_Wm;
-Float_t rawpfmet_Wm, rawpfmetPhi_Wm;
-Float_t type1pfmet_Wm, type1pfmetPhi_Wm;
-Float_t genmet_Wm, genmetPhi_Wm;
-Float_t mt_Wm, u1_Wm, u2_Wm;
-Int_t q_Wm;
+Int_t  npv_Wm=0, nEvents_Wm=0;
+Float_t genVPdgID_Wm=0, genVPt_Wm=0, genVPhi_Wm=0, genVy_Wm=0, genVMass_Wm=0;
+Float_t genLepPdgID_Wm=0, genLepPt_Wm=0, genLepPhi_Wm=0;
+Float_t rawpfmet_Wm=0, rawpfmetPhi_Wm=0;
+Float_t type1pfmet_Wm=0, type1pfmetPhi_Wm=0;
+Float_t genmet_Wm=0, genmetPhi_Wm=0;
+Float_t mt_Wm=0, u1_Wm=0, u2_Wm=0;
+Int_t q_Wm=0;
 LorentzVector *lep_Wm=0;
 ///// muon specific /////
-Float_t pfChIso_Wm, pfGamIso_Wm, pfNeuIso_Wm;
-Float_t isLooseMuon_Wm, isSoftMuon_Wm, isTightMuon_Wm;
-Bool_t passMuonLooseID_Wm, passMuonSoftID_Wm, passMuonTightID_Wm;
-
-// Compute MC event weightWm_sel per 1/fb
-Double_t weight_Wm = 1;
-//const Double_t xsec = 1;
-//if(xsec>0) weightWm = 1000.*xsec/(Double_t)eventTree->GetEntries();
+Float_t pfChIso_Wm=0, pfGamIso_Wm=0, pfNeuIso_Wm=0;
+Int_t isLooseMuon_Wm=0, isSoftMuon_Wm=0, isTightMuon_Wm=0;
 
 //
 // constructors and destructor
@@ -167,6 +143,9 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
    using namespace edm;
 
+   // Count total number of MC events processed
+   eventCounter_Wm++;
+
    Handle<reco::VertexCollection> vertices;
    iEvent.getByToken(vtxToken_, vertices);
    // good vertex requirement
@@ -189,12 +168,12 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    for (unsigned int jMuon=0;jMuon < muons->size();jMuon++) {
      const pat::Muon &mu = (*muons)[jMuon];
 
-     isLooseMuon_Wm = mu.isLooseMuon(); passMuonLooseID_Wm = Convert_Wm(isLooseMuon_Wm);
-     isTightMuon_Wm = mu.isTightMuon(PV); passMuonTightID_Wm = Convert_Wm(isTightMuon_Wm);
+     isLooseMuon_Wm = mu.isLooseMuon();
+     isTightMuon_Wm = mu.isTightMuon(PV);
 
      if(fabs(mu.eta()) > 2.4) continue;    // lepton |eta| cut
      if(mu.pt()        < 10 ) continue;    // lepton pT cut
-     if(passMuonLooseID_Wm)   nLooseLep++; // loose lepton selection
+     if(isLooseMuon_Wm)   nLooseLep++; // loose lepton selection
      if(nLooseLep>1) { // extra lepton veto
        passSel=kFALSE;
        break;
@@ -202,14 +181,17 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 
      Double_t iso = mu.chargedHadronIso() + TMath::Max(mu.neutralHadronIso() + mu.photonIso() - 0.5*mu.puChargedHadronIso(),Double_t(0));
 
-     if(fabs(mu.eta()) > ETA_CUT) continue;                          // lepton |eta| cut
-     if(mu.pt()        < PT_CUT ) continue;                          // lepton pT cut
-     if(!(passMuonTightID_Wm && iso <= 0.12*mu.pt()))      continue; // lepton selection
+     if(fabs(mu.eta()) > ETA_CUT) continue; // lepton |eta| cut
+     if(mu.pt()        < PT_CUT ) continue; // lepton pT cut
+     if(!(isTightMuon_Wm && iso <= 0.12*mu.pt())) continue; // lepton selection
 
      passSel = kTRUE;
      goodMuonIdx = jMuon;
    }
    if(passSel==kFALSE) return;
+
+   // Count total number of events selected
+   nsel_Wm++;
 
    const pat::Muon &goodMuon = (*muons)[goodMuonIdx];
    // Lepton information
@@ -217,14 +199,9 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    pfChIso_Wm     = goodMuon.chargedHadronIso();
    pfGamIso_Wm    = goodMuon.photonIso();
    pfNeuIso_Wm    = goodMuon.neutralHadronIso();
-   isLooseMuon_Wm = goodMuon.isLooseMuon(); passMuonLooseID_Wm = Convert_Wm(isLooseMuon_Wm);
-   isSoftMuon_Wm  = goodMuon.isSoftMuon(PV); passMuonSoftID_Wm = Convert_Wm(isSoftMuon_Wm);
-   isTightMuon_Wm = goodMuon.isTightMuon(PV); passMuonTightID_Wm = Convert_Wm(isTightMuon_Wm);
-
-   // Event counting and scale factors
-   nsel_Wm    += weight_Wm;
-   nselvar_Wm += weight_Wm*weight_Wm;
-   scale1fb_Wm = weight_Wm;
+   isLooseMuon_Wm = goodMuon.isLooseMuon() ? 1 : 0;
+   isSoftMuon_Wm  = goodMuon.isSoftMuon(PV) ? 1 : 0;
+   isTightMuon_Wm = goodMuon.isTightMuon(PV) ? 1 : 0;
 
    // Lepton and supercluster 4-vectors
    LorentzVector vLep(goodMuon.pt(),goodMuon.eta(),goodMuon.phi(),MUON_MASS);
@@ -310,13 +287,14 @@ selectWm::beginJob()
   outTree_Wm = new TTree("Events","Events");
 
   outTree_Wm->Branch("npv",           &npv_Wm,           "npv/I");          // number of primary vertices
+  outTree_Wm->Branch("nEvents",       &nEvents_Wm,       "nEvents/I");      // total number of MC events processed
+                                                                            // (will be used for event weighting in signal extraction)
   outTree_Wm->Branch("genVPt",        &genVPt_Wm,        "genVPt/F");       // GEN boson pT (signal MC)
   outTree_Wm->Branch("genVPhi",       &genVPhi_Wm,       "genVPhi/F");      // GEN boson phi (signal MC)
   outTree_Wm->Branch("genVy",         &genVy_Wm,         "genVy/F");        // GEN boson rapidity (signal MC)
   outTree_Wm->Branch("genVMass",      &genVMass_Wm,      "genVMass/F");     // GEN boson mass (signal MC)
   outTree_Wm->Branch("genLepPt",      &genLepPt_Wm,      "genLepPt/F");     // GEN lepton pT (signal MC)
   outTree_Wm->Branch("genLepPhi",     &genLepPhi_Wm,     "genLepPhi/F");    // GEN lepton phi (signal MC)
-  outTree_Wm->Branch("scale1fb",      &scale1fb_Wm,      "scale1fb/F");     // event weight per 1/fb (MC)
   outTree_Wm->Branch("rawpfmet",      &rawpfmet_Wm,      "rawpfmet/F");     // Raw PF MET
   outTree_Wm->Branch("rawpfmetPhi",   &rawpfmetPhi_Wm,   "rawpfmetPhi/F");  // Raw PF MET phi
   outTree_Wm->Branch("type1pfmet",    &type1pfmet_Wm,    "type1pfmet/F");   // Type-1 corrected PF MET
@@ -332,9 +310,9 @@ selectWm::beginJob()
   outTree_Wm->Branch("pfChIso",       &pfChIso_Wm,       "pfChIso/F");      // PF charged hadron isolation of muon
   outTree_Wm->Branch("pfGamIso",      &pfGamIso_Wm,      "pfGamIso/F");     // PF photon isolation of muon
   outTree_Wm->Branch("pfNeuIso",      &pfNeuIso_Wm,      "pfNeuIso/F");     // PF neutral hadron isolation of muon
-  outTree_Wm->Branch("isLooseMuon",   &isLooseMuon_Wm,  "isLooseMuon/F");  // loose muon ID
-  outTree_Wm->Branch("isSoftMuon",    &isSoftMuon_Wm,    "isSoftMuon/F");   // loose muon ID
-  outTree_Wm->Branch("isTightMuon",   &isTightMuon_Wm,  "isTightMuon/F");  // tight muon ID
+  outTree_Wm->Branch("isLooseMuon",   &isLooseMuon_Wm,  "isLooseMuon/I");   // loose muon ID
+  outTree_Wm->Branch("isSoftMuon",    &isSoftMuon_Wm,   "isSoftMuon/I");    // loose muon ID
+  outTree_Wm->Branch("isTightMuon",   &isTightMuon_Wm,  "isTightMuon/I");   // tight muon ID
 
 }
 
@@ -342,6 +320,24 @@ selectWm::beginJob()
 void 
 selectWm::endJob() 
 {
+   // The only information in the last entry of the output tree
+   // is the total number of MC events processed
+   nEvents_Wm = eventCounter_Wm;
+   // Set everything else to zero
+   npv_Wm=0;
+   genVPdgID_Wm=0; genVPt_Wm=0; genVPhi_Wm=0; genVy_Wm=0; genVMass_Wm=0;
+   genLepPdgID_Wm=0; genLepPt_Wm=0; genLepPhi_Wm=0;
+   rawpfmet_Wm=0; rawpfmetPhi_Wm=0;
+   type1pfmet_Wm=0; type1pfmetPhi_Wm=0;
+   genmet_Wm=0; genmetPhi_Wm=0;
+   mt_Wm=0; u1_Wm=0; u2_Wm=0;
+   q_Wm=0;
+   lep_Wm=0;
+   ///// muon specific /////
+   pfChIso_Wm=0; pfGamIso_Wm=0; pfNeuIso_Wm=0;
+   isLooseMuon_Wm=0; isSoftMuon_Wm=0; isTightMuon_Wm=0;
+
+   outTree_Wm->Fill();
 
    // Save tree in output file
    outFile_Wm->Write();
@@ -357,7 +353,7 @@ selectWm::endJob()
   std::cout << "W -> mu nu" << std::endl;
   std::cout << " pT > " << PT_CUT << std::endl;
   std::cout << " |eta| < " << ETA_CUT << std::endl;
-  std::cout << nsel_Wm << " +/- " << sqrt(nselvar_Wm) << " per 1/fb" << std::endl;
+  std::cout << nsel_Wm << " +/- " << sqrt(nsel_Wm) << " per 1/fb" << std::endl;
   std::cout << std::endl;
 
   std::cout << std::endl;

@@ -69,7 +69,6 @@ class selectWe : public edm::EDAnalyzer {
       edm::EDGetTokenT<pat::METCollection> metToken_;
       edm::EDGetTokenT<pat::PackedCandidateCollection> pfToken_;
       edm::EDGetTokenT<double> rhoToken_;
-//      edm::InputTag rhoFixedGrid;
 };
 
 //
@@ -77,23 +76,6 @@ class selectWe : public edm::EDAnalyzer {
 //
 
 typedef ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> > LorentzVector;
-
-// Convert int to binary value
-bool Convert_We(unsigned int val,bool print=kFALSE)
-{
-   unsigned int mask = 1 << (sizeof(int) * 8 - 1);
-   bool lastDigit;
-   for(unsigned int i = 0; i < sizeof(int) * 8; i++)
-   {
-      if( (val & mask) == 0 ) {
-        lastDigit=0;
-      } else {
-        lastDigit=1;
-      }
-      mask >>= 1;
-   }
-   return lastDigit;
-}
 
 //
 // static data member definitions
@@ -110,34 +92,29 @@ const Double_t ELE_MASS  = 0.000511;
 const Double_t ECAL_GAP_LOW  = 1.4442;
 const Double_t ECAL_GAP_HIGH = 1.566;
 
-Double_t nsel_We=0, nselvar_We=0;
+// Count total number of events selected
+Double_t nsel_We=0, eventCounter_We=0;
 
-TString outFilename = TString("Wenu_select.root");
+TString outFilename = TString("selectWe.root");
 TFile *outFile = new TFile();
 TTree *outTree_We = new TTree();
 
 //
 // Declare output ntuple variables
 //
-UInt_t  npv_We;
-Float_t genVPdgID_We, genVPt_We, genVPhi_We, genVy_We, genVMass_We;
-Float_t genLepPdgID_We, genLepPt_We, genLepPhi_We;
-Float_t scale1fb_We;
-Float_t rawpfmet_We, rawpfmetPhi_We;
-Float_t type1pfmet_We, type1pfmetPhi_We;
-Float_t genmet_We, genmetPhi_We;
-Float_t mt_We, u1_We, u2_We;
-Int_t q_We;
+Int_t  npv_We=0, nEvents_We=0;
+Float_t genVPdgID_We=0, genVPt_We=0, genVPhi_We=0, genVy_We=0, genVMass_We=0;
+Float_t genLepPdgID_We=0, genLepPt_We=0, genLepPhi_We=0;
+Float_t rawpfmet_We=0, rawpfmetPhi_We=0;
+Float_t type1pfmet_We=0, type1pfmetPhi_We=0;
+Float_t genmet_We=0, genmetPhi_We=0;
+Float_t mt_We=0, u1_We=0, u2_We=0;
+Int_t q_We=0;
 LorentzVector *lep_We=0;
 ///// electron specific /////
-Float_t pfChIso_We, pfGamIso_We, pfNeuIso_We;
-Float_t isVetoEle_We, isLooseEle_We, isMediumEle_We, isTightEle_We;
+Float_t pfChIso_We=0, pfGamIso_We=0, pfNeuIso_We=0;
+Int_t isVetoEle_We=0, isLooseEle_We=0, isMediumEle_We=0, isTightEle_We=0;
 LorentzVector *sc_We=0;
-
-// Compute MC event weight_sel per 1/fb
-Double_t weight = 1;
-//const Double_t xsec = 1;
-//if(xsec>0) weight = 1000.*xsec/(Double_t)eventTree->GetEntries();
 
 //
 // constructors and destructor
@@ -150,7 +127,6 @@ selectWe::selectWe(const edm::ParameterSet& iConfig):
    rhoToken_(consumes<double>(iConfig.getParameter<edm::InputTag>("rhos")))
 {
    //now do what ever initialization is needed
-//   rhoFixedGrid = iConfig.getParameter<edm::InputTag>("fixedGridRhoAll");
 }
 
 
@@ -174,6 +150,9 @@ selectWe::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 
    using namespace edm;
 
+   // Count total number of MC events processed
+   eventCounter_We++;
+
    Handle<reco::VertexCollection> vertices;
    iEvent.getByToken(vtxToken_, vertices);
    // good vertex requirement
@@ -182,7 +161,6 @@ selectWe::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 //   const reco::Vertex &PV = vertices->front();
 
    Handle<double> rhoHandle;
-//   iEvent.getByLabel(rhoFixedGrid, rhoHandle);
    iEvent.getByToken(rhoToken_, rhoHandle);
    Double_t rho = *rhoHandle.product();
 
@@ -234,6 +212,8 @@ selectWe::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      goodEleIdx = jElectron;
    }
    if(passSel==kFALSE) return;
+   // Count total number of events selected
+   nsel_We++;
 
    const pat::Electron &goodEle = (*electrons)[goodEleIdx];
    // Lepton information
@@ -246,14 +226,9 @@ selectWe::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    isMediumEle_We = goodEle.electronID("cutBasedElectronID-CSA14-PU20bx25-V0-standalone-medium");
    isTightEle_We  = goodEle.electronID("cutBasedElectronID-CSA14-PU20bx25-V0-standalone-tight");
 
-   // Event counting and scale factors
-   nsel_We    += weight;
-   nselvar_We += weight*weight;
-   scale1fb_We = weight;
-
    // Lepton and supercluster 4-vectors
    LorentzVector vLep(goodEle.pt(),goodEle.eta(),goodEle.phi(),ELE_MASS);
-   LorentzVector vSC(goodEle.superCluster()->energy(),goodEle.superCluster()->eta(),goodEle.superCluster()->phi(),ELE_MASS);
+   LorentzVector vSC(goodEle.superCluster()->energy()*(goodEle.pt()/goodEle.p()),goodEle.superCluster()->eta(),goodEle.superCluster()->phi(),ELE_MASS);
 
    lep_We = &vLep;
    sc_We = &vSC;
@@ -337,13 +312,14 @@ selectWe::beginJob()
   outTree_We = new TTree("Events","Events");
 
   outTree_We->Branch("npv",           &npv_We,           "npv/I");          // number of primary vertices
+  outTree_We->Branch("nEvents",       &nEvents_We,       "nEvents/I");      // total number of MC events processed
+                                                                            // (will be used for event weighting in signal extraction)
   outTree_We->Branch("genVPt",        &genVPt_We,        "genVPt/F");       // GEN boson pT (signal MC)
   outTree_We->Branch("genVPhi",       &genVPhi_We,       "genVPhi/F");      // GEN boson phi (signal MC)
   outTree_We->Branch("genVy",         &genVy_We,         "genVy/F");        // GEN boson rapidity (signal MC)
   outTree_We->Branch("genVMass",      &genVMass_We,      "genVMass/F");     // GEN boson mass (signal MC)
   outTree_We->Branch("genLepPt",      &genLepPt_We,      "genLepPt/F");     // GEN lepton pT (signal MC)
   outTree_We->Branch("genLepPhi",     &genLepPhi_We,     "genLepPhi/F");    // GEN lepton phi (signal MC)
-  outTree_We->Branch("scale1fb",      &scale1fb_We,      "scale1fb/F");     // event weight per 1/fb (MC)
   outTree_We->Branch("rawpfmet",      &rawpfmet_We,      "rawpfmet/F");     // Raw PF MET
   outTree_We->Branch("rawpfmetPhi",   &rawpfmetPhi_We,   "rawpfmetPhi/F");  // Raw PF MET phi
   outTree_We->Branch("type1pfmet",    &type1pfmet_We,    "type1pfmet/F");   // Type-1 corrected PF MET
@@ -360,16 +336,36 @@ selectWe::beginJob()
   outTree_We->Branch("pfChIso",       &pfChIso_We,       "pfChIso/F");      // PF charged hadron isolation of electron
   outTree_We->Branch("pfGamIso",      &pfGamIso_We,      "pfGamIso/F");     // PF photon isolation of electron
   outTree_We->Branch("pfNeuIso",      &pfNeuIso_We,      "pfNeuIso/F");     // PF neutral hadron isolation of electron
-  outTree_We->Branch("isVetoEle",     &isVetoEle_We,     "isVetoEle/F");    // tag lepton veto electron ID
-  outTree_We->Branch("isLooseEle",    &isLooseEle_We,    "isLooseEle/F");   // tag lepton loose electron ID
-  outTree_We->Branch("isMediumEle",   &isMediumEle_We,   "isMediumEle/F");  // tag lepton medium electron ID
-  outTree_We->Branch("isTightEle",    &isTightEle_We,    "isTightEle/F");   // tag lepton tight electron ID
+  outTree_We->Branch("isVetoEle",     &isVetoEle_We,     "isVetoEle/I");    // tag lepton veto electron ID
+  outTree_We->Branch("isLooseEle",    &isLooseEle_We,    "isLooseEle/I");   // tag lepton loose electron ID
+  outTree_We->Branch("isMediumEle",   &isMediumEle_We,   "isMediumEle/I");  // tag lepton medium electron ID
+  outTree_We->Branch("isTightEle",    &isTightEle_We,    "isTightEle/I");   // tag lepton tight electron ID
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
 void 
 selectWe::endJob() 
 {
+   // The only information in the last entry of the output tree
+   // is the total number of MC events processed
+   nEvents_We = eventCounter_We;
+   // Set everything else to zero
+   npv_We=0;
+   genVPdgID_We=0; genVPt_We=0; genVPhi_We=0; genVy_We=0; genVMass_We=0;
+   genLepPdgID_We=0; genLepPt_We=0; genLepPhi_We=0;
+   rawpfmet_We=0; rawpfmetPhi_We=0;
+   type1pfmet_We=0; type1pfmetPhi_We=0;
+   genmet_We=0; genmetPhi_We=0;
+   mt_We=0; u1_We=0; u2_We=0;
+   q_We=0;
+   lep_We=0;
+   ///// electron specific /////
+   pfChIso_We=0; pfGamIso_We=0; pfNeuIso_We=0;
+   isVetoEle_We=0; isLooseEle_We=0; isMediumEle_We=0; isTightEle_We=0;
+   sc_We=0;
+
+   outTree_We->Fill();
+
    // Save tree to output file
    outFile->Write();
    outFile->Close();
@@ -384,7 +380,7 @@ selectWe::endJob()
   std::cout << "W -> e nu" << std::endl;
   std::cout << " pT > " << PT_CUT << std::endl;
   std::cout << " |eta| < " << ETA_CUT << std::endl;
-  std::cout << nsel_We << " +/- " << sqrt(nselvar_We) << " per 1/fb" << std::endl;
+  std::cout << nsel_We << " +/- " << sqrt(nsel_We) << " per 1/fb" << std::endl;
   std::cout << std::endl;
 
   std::cout << std::endl;
