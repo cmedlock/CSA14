@@ -28,13 +28,11 @@ process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(**nEvents**)
 
 3.plotting folder
 
-The macros in this folder apply the final kinematic cuts to leptons and make plots of both MET and lepton characteristics. The MET plots compare 4 different types of MET:
+The macros in this folder make plots relevant for both W and Z signal extraction, and compare different pile-up scenarios:
 
-1. Generated MET
-2. Type-1 corrected PF MET - the default in CSA14 miniAOD samples
-3. Type-1 + xy-shift corrected PF MET - the xy-shift correction mitigates the modulation of the phi component of the MET vector
-4. Raw PF MET - the negative sum of the ET vectors of all PF candidates in an event
-
-Also included is a macro to study the resolution of the hadronic recoil in Z->ee and Z->mm samples.
+1.Dilepton mass in the Z->ee and Z->mumu signal samples
+2.Type-1 corrected PF MET (the default in CSA14 miniAOD samples)
+3.Type-1 corrected PF MET resolution
+4.Hadronic recoil parallel and perpendicular component resolution
 
 All plots can be generated through the script makePlots.sh.
