@@ -30,9 +30,9 @@ process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(**nEvents**)
 
 The macros in this folder make plots relevant for both W and Z signal extraction, and compare different pile-up scenarios:
 
-1.Dilepton mass in the Z->ee and Z->mumu signal samples
-2.Type-1 corrected PF MET (the default in CSA14 miniAOD samples)
-3.Type-1 corrected PF MET resolution
+1.Dilepton mass in the Z signal samples
+2.Type-1 corrected PF MET (the default in CSA14 miniAOD samples) in the W signal samples
+3.Type-1 corrected PF MET resolution in the W signal samples
 4.Hadronic recoil parallel and perpendicular component resolution
 
 All plots can be generated through the script makePlots.sh.
