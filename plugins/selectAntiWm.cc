@@ -14,7 +14,7 @@
 // Original Author:  Catherine Aiko Medlock
 //         Created:  Tue, 22 Jul 2014 11:26:17 GMT
 // This code is just an adaptation of Kevin Sung's original code used for the 8 TeV analysis:
-// https://github.com/jaylawhorn/mitewk/blob/master/Selection/selectWm.C
+// https://github.com/jaylawhorn/mitewk/blob/master/Selection/selectAntiWm.C
 
 // system include files
 #include <memory>
@@ -48,10 +48,10 @@
 // class declaration
 //
 
-class selectWm : public edm::EDAnalyzer {
+class selectAntiWm : public edm::EDAnalyzer {
    public:
-      explicit selectWm(const edm::ParameterSet&);
-      ~selectWm();
+      explicit selectAntiWm(const edm::ParameterSet&);
+      ~selectAntiWm();
 
       static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
 
@@ -93,33 +93,35 @@ const Double_t PT_CUT    = 20;
 const Double_t ETA_CUT   = 2.4;
 const Double_t MUON_MASS = 0.105658369;
 
-Double_t nsel_Wm=0;
+Double_t nsel_AWm=0;
 
-TString outFilename_Wm = TString("selectWm.root");
-TFile *outFile_Wm = new TFile();
-TTree *outTree_Wm = new TTree();
+TString outFilename_AWm = TString("AntiWmunu_select.root");
+TFile *outFile_AWm = new TFile();
+TTree *outTree_AWm = new TTree();
 
 //
 // Declare output ntuple variables
 //
-Int_t  npv_Wm=0;
-Float_t genVPdgID_Wm=0, genVPt_Wm=0, genVPhi_Wm=0, genVy_Wm=0, genVMass_Wm=0;
-Float_t genLepPdgID_Wm=0, genLepPt_Wm=0, genLepPhi_Wm=0;
-Float_t rawpfmet_Wm=0, rawpfmetPhi_Wm=0;
-Float_t type1pfmet_Wm=0, type1pfmetPhi_Wm=0;
-Float_t genmet_Wm=0, genmetPhi_Wm=0;
-Float_t mt_Wm=0, u1_Wm=0, u2_Wm=0;
-Int_t q_Wm=0;
-LorentzVector *lep_Wm=0;
+UInt_t  npv_AWm;
+Float_t genVPdgID_AWm, genVPt_AWm, genVPhi_AWm, genVy_AWm, genVMass_AWm;
+Float_t genLepPdgID_AWm, genLepPt_AWm, genLepPhi_AWm;
+Float_t scale1fb_AWm;
+Float_t rawpfmet_AWm, rawpfmetPhi_AWm;
+Float_t type1pfmet_AWm, type1pfmetPhi_AWm;
+Float_t genmet_AWm, genmetPhi_AWm;
+Float_t mt_AWm, u1_AWm, u2_AWm;
+Int_t q_AWm;
+LorentzVector *lep_AWm=0;
 ///// muon specific /////
-Float_t pfChIso_Wm=0, pfGamIso_Wm=0, pfNeuIso_Wm=0;
-Int_t isLooseMuon_Wm=0, isSoftMuon_Wm=0, isTightMuon_Wm=0;
-Int_t passSingleMuTrigger_Wm=0, matchTrigObj_Wm=0;
+Float_t pfChIso_AWm, pfGamIso_AWm, pfNeuIso_AWm;
+Float_t isLooseMuon_AWm, isSoftMuon_AWm, isTightMuon_AWm;
+Bool_t passMuonLooseID_AWm, passMuonSoftID_AWm, passMuonTightID_AWm;
+Int_t passSingleMuTrigger_AWm=0, matchTrigObj_AWm=0;
 
 //
 // constructors and destructor
 //
-selectWm::selectWm(const edm::ParameterSet& iConfig):
+selectAntiWm::selectAntiWm(const edm::ParameterSet& iConfig):
    vtxToken_(consumes<reco::VertexCollection>(iConfig.getParameter<edm::InputTag>("vertices"))),
    muonToken_(consumes<pat::MuonCollection>(iConfig.getParameter<edm::InputTag>("muons"))),
    metToken_(consumes<pat::METCollection>(iConfig.getParameter<edm::InputTag>("mets"))),
@@ -132,7 +134,7 @@ selectWm::selectWm(const edm::ParameterSet& iConfig):
 }
 
 
-selectWm::~selectWm()
+selectAntiWm::~selectAntiWm()
 {
  
    // do anything here that needs to be done at desctruction time
@@ -147,7 +149,7 @@ selectWm::~selectWm()
 
 // ------------ method called for each event  ------------
 void
-selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
+selectAntiWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
    using namespace edm;
 
@@ -156,7 +158,7 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    // good vertex requirement
    if (vertices->empty()) return; // skip the event if no PV found
    const reco::Vertex &PV = vertices->front();
-   npv_Wm = vertices->size();
+   npv_AWm = vertices->size();
 
    Handle<pat::MuonCollection> muons;
    iEvent.getByToken(muonToken_, muons);
@@ -170,7 +172,7 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    const TString singleMu("HLT_IsoMu20_eta2p1_IterTrk02_v1");
    for (unsigned int i = 0, n = triggerBits->size(); i < n; ++i) {
        if((const TString)names.triggerName(i)!=singleMu) continue;
-       passSingleMuTrigger_Wm = triggerBits->accept(i) ? 1 : 0;
+       passSingleMuTrigger_AWm = triggerBits->accept(i) ? 1 : 0;
        break;
    }
 
@@ -185,20 +187,20 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    for (unsigned int jMuon=0;jMuon < muons->size();jMuon++) {
      const pat::Muon &mu = (*muons)[jMuon];
 
-     isLooseMuon_Wm = mu.isLooseMuon();
-     isTightMuon_Wm = mu.isTightMuon(PV);
+     isLooseMuon_AWm = mu.isLooseMuon();
+     isTightMuon_AWm = mu.isTightMuon(PV);
 
      if(fabs(mu.eta()) > 2.4) continue;    // lepton |eta| cut
      if(mu.pt()        < 10 ) continue;    // lepton pT cut
-     if(isLooseMuon_Wm)   nLooseLep++; // loose lepton selection
+     if(passMuonLooseID_AWm)   nLooseLep++; // loose lepton selection
      if(nLooseLep>1) { // extra lepton veto
        passSel=kFALSE;
        break;
      }
 
-     if(fabs(mu.eta()) > ETA_CUT) continue; // lepton |eta| cut
-     if(mu.pt()        < PT_CUT ) continue; // lepton pT cut
-     if(!(isTightMuon_Wm && mu.chargedHadronIso() <= 0.12*mu.pt())) continue; // lepton selection
+     if(fabs(mu.eta()) > ETA_CUT) continue;                          // lepton |eta| cut
+     if(mu.pt()        < PT_CUT ) continue;                          // lepton pT cut
+     if(!(passMuonTightID_AWm && mu.chargedHadronIso() >= 0.3*mu.pt()))      continue; // lepton selection
 
      passSel = kTRUE;
      goodMuonIdx = jMuon;
@@ -206,44 +208,44 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    if(passSel==kFALSE) return;
 
    // Count total number of events selected
-   nsel_Wm++;
+   nsel_AWm++;
 
    const pat::Muon &goodMuon = (*muons)[goodMuonIdx];
    // Lepton information
-   q_Wm           = goodMuon.charge();
-   pfChIso_Wm     = goodMuon.chargedHadronIso();
-   pfGamIso_Wm    = goodMuon.photonIso();
-   pfNeuIso_Wm    = goodMuon.neutralHadronIso();
-   isLooseMuon_Wm = goodMuon.isLooseMuon() ? 1 : 0;
-   isSoftMuon_Wm  = goodMuon.isSoftMuon(PV) ? 1 : 0;
-   isTightMuon_Wm = goodMuon.isTightMuon(PV) ? 1 : 0;
+   q_AWm           = goodMuon.charge();
+   pfChIso_AWm     = goodMuon.chargedHadronIso();
+   pfGamIso_AWm    = goodMuon.photonIso();
+   pfNeuIso_AWm    = goodMuon.neutralHadronIso();
+   isLooseMuon_AWm = goodMuon.isLooseMuon() ? 1 : 0;
+   isSoftMuon_AWm  = goodMuon.isSoftMuon(PV) ? 1 : 0;
+   isTightMuon_AWm = goodMuon.isTightMuon(PV) ? 1 : 0;
 
      // Match to a trigger object
-     matchTrigObj_Wm = 0;
-     if(passSingleMuTrigger_Wm) {
+     matchTrigObj_AWm = 0;
+     if(passSingleMuTrigger_AWm) {
        for (pat::TriggerObjectStandAlone obj : *triggerObjects) { // note: not "const &" since we want to call unpackPathNames
-           matchTrigObj_Wm = (sqrt((goodMuon.eta()-obj.eta())*(goodMuon.eta()-obj.eta())+(goodMuon.phi()-obj.phi())*(goodMuon.phi()-obj.phi())) <= 0.2) ? 1 : 0;
+           matchTrigObj_AWm = (sqrt((goodMuon.eta()-obj.eta())*(goodMuon.eta()-obj.eta())+(goodMuon.phi()-obj.phi())*(goodMuon.phi()-obj.phi())) <= 0.2) ? 1 : 0;
        }
      }
 
    // Lepton and supercluster 4-vectors
    LorentzVector vLep(goodMuon.pt(),goodMuon.eta(),goodMuon.phi(),MUON_MASS);
 
-   lep_Wm = &vLep;
+   lep_AWm = &vLep;
 
    // Type-1 corrected PF MET (default)
    edm::Handle<pat::METCollection> mets;
    iEvent.getByToken(metToken_, mets);
 
    const pat::MET &met = mets->front();
-   TVector2 vtype1pfMET_Wm = TVector2(met.px(),met.py());
-   type1pfmet_Wm    = vtype1pfMET_Wm.Mod();
-   type1pfmetPhi_Wm = vtype1pfMET_Wm.Phi();
+   TVector2 vtype1pfMET_AWm = TVector2(met.px(),met.py());
+   type1pfmet_AWm    = vtype1pfMET_AWm.Mod();
+   type1pfmetPhi_AWm = vtype1pfMET_AWm.Phi();
 
    // Generator level MET
-   TVector2 vgenMET_Wm = TVector2(met.genMET()->px(),met.genMET()->py());
-   genmet_Wm    = vgenMET_Wm.Mod();
-   genmetPhi_Wm = vgenMET_Wm.Phi();
+   TVector2 vgenMET_AWm = TVector2(met.genMET()->px(),met.genMET()->py());
+   genmet_AWm    = vgenMET_AWm.Mod();
+   genmetPhi_AWm = vgenMET_AWm.Phi();
 
    // Raw PF MET
    edm::Handle<pat::PackedCandidateCollection> pfs;
@@ -256,34 +258,34 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      rawpfMETpy -= pf.py();
    }
 
-   TVector2 vrawpfMET_Wm = TVector2(rawpfMETpx,rawpfMETpy);
-   rawpfmet_Wm    = vrawpfMET_Wm.Mod();
-   rawpfmetPhi_Wm = vrawpfMET_Wm.Phi();
+   TVector2 vrawpfMET_AWm = TVector2(rawpfMETpx,rawpfMETpy);
+   rawpfmet_AWm    = vrawpfMET_AWm.Mod();
+   rawpfmetPhi_AWm = vrawpfMET_AWm.Phi();
 
    // Lepton transverse mass
-   mt_Wm       = sqrt(2.0*vLep.Pt()*vtype1pfMET_Wm.Mod()*(1.0-cos(vLep.Phi()-vtype1pfMET_Wm.Phi())));
+   mt_AWm       = sqrt(2.0*vLep.Pt()*vtype1pfMET_AWm.Mod()*(1.0-cos(vLep.Phi()-vtype1pfMET_AWm.Phi())));
 
    // Generator level lepton information and hadronic recoil
    const reco::GenParticle* genLep = goodMuon.genLepton();
    if(genLep!=NULL) {
-     genLepPdgID_Wm = genLep->pdgId();
-     genLepPt_Wm    = genLep->pt();
-     genLepPhi_Wm   = genLep->phi();
+     genLepPdgID_AWm = genLep->pdgId();
+     genLepPt_AWm    = genLep->pt();
+     genLepPhi_AWm   = genLep->phi();
      const reco::Candidate* mother = genLep->mother(0);
-     genVPdgID_Wm = mother->pdgId();
-     genVPt_Wm    = mother->pt();
-     genVPhi_Wm   = mother->phi();
-     genVy_Wm     = mother->y();
-     genVMass_Wm  = mother->mass();
-     TVector2 vWPt(genVPt_Wm*cos(genVPhi_Wm),genVPt_Wm*sin(genVPhi_Wm));
+     genVPdgID_AWm = mother->pdgId();
+     genVPt_AWm    = mother->pt();
+     genVPhi_AWm   = mother->phi();
+     genVy_AWm     = mother->y();
+     genVMass_AWm  = mother->mass();
+     TVector2 vWPt(genVPt_AWm*cos(genVPhi_AWm),genVPt_AWm*sin(genVPhi_AWm));
      TVector2 vLepPt(vLep.Px(),vLep.Py());
-     TVector2 vU = -1.0*(vtype1pfMET_Wm+vLepPt);
-     u1_Wm = (vWPt.Px()*vU.Px()+vWPt.Py()*vU.Py())/genVPt_Wm; // u1 = (pT . u)/|pT|
-     u2_Wm = (vWPt.Px()*vU.Px()-vWPt.Py()*vU.Py())/genVPt_Wm; // u1 = (pT x u)/|pT|
+     TVector2 vU = -1.0*(vtype1pfMET_AWm+vLepPt);
+     u1_AWm = (vWPt.Px()*vU.Px()+vWPt.Py()*vU.Py())/genVPt_AWm; // u1 = (pT . u)/|pT|
+     u2_AWm = (vWPt.Px()*vU.Px()-vWPt.Py()*vU.Py())/genVPt_AWm; // u1 = (pT x u)/|pT|
    }
 
    // Fill tree
-   outTree_Wm->Fill();
+   outTree_AWm->Fill();
 
 #ifdef THIS_IS_AN_EVENT_EXAMPLE
    Handle<ExampleData> pIn;
@@ -299,52 +301,53 @@ selectWm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 
 // ------------ method called once each job just before starting event loop  ------------
 void 
-selectWm::beginJob()
+selectAntiWm::beginJob()
 {
 
   //
   // Set up output ntuple
   //
 
-  outFile_Wm = new TFile(outFilename_Wm,"RECREATE");
-  outTree_Wm = new TTree("Events","Events");
+  outFile_AWm = new TFile(outFilename_AWm,"RECREATE");
+  outTree_AWm = new TTree("Events","Events");
 
-  outTree_Wm->Branch("npv",           &npv_Wm,           "npv/I");          // number of primary vertices
-  outTree_Wm->Branch("genVPt",        &genVPt_Wm,        "genVPt/F");       // GEN boson pT (signal MC)
-  outTree_Wm->Branch("genVPhi",       &genVPhi_Wm,       "genVPhi/F");      // GEN boson phi (signal MC)
-  outTree_Wm->Branch("genVy",         &genVy_Wm,         "genVy/F");        // GEN boson rapidity (signal MC)
-  outTree_Wm->Branch("genVMass",      &genVMass_Wm,      "genVMass/F");     // GEN boson mass (signal MC)
-  outTree_Wm->Branch("genLepPt",      &genLepPt_Wm,      "genLepPt/F");     // GEN lepton pT (signal MC)
-  outTree_Wm->Branch("genLepPhi",     &genLepPhi_Wm,     "genLepPhi/F");    // GEN lepton phi (signal MC)
-  outTree_Wm->Branch("rawpfmet",      &rawpfmet_Wm,      "rawpfmet/F");     // Raw PF MET
-  outTree_Wm->Branch("rawpfmetPhi",   &rawpfmetPhi_Wm,   "rawpfmetPhi/F");  // Raw PF MET phi
-  outTree_Wm->Branch("type1pfmet",    &type1pfmet_Wm,    "type1pfmet/F");   // Type-1 corrected PF MET
-  outTree_Wm->Branch("type1pfmetPhi", &type1pfmetPhi_Wm, "type1pfmetPhi/F");// Type-1 corrected PF MET phi
-  outTree_Wm->Branch("genmet",        &genmet_Wm,        "genmet/F");       // Generator level MET
-  outTree_Wm->Branch("genmetPhi",     &genmetPhi_Wm,     "genmetPhi/F");    // Generator level MET phi
-  outTree_Wm->Branch("mt",            &mt_Wm,            "mt/F");           // transverse mass
-  outTree_Wm->Branch("u1",            &u1_Wm,            "u1/F");           // parallel component of recoil
-  outTree_Wm->Branch("u2",            &u2_Wm,            "u2/F");           // perpendicular component of recoil 
-  outTree_Wm->Branch("q",             &q_Wm,             "q/I");            // lepton charge
-  outTree_Wm->Branch("lep", "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &lep_Wm);   // lepton 4-vector
+  outTree_AWm->Branch("npv",           &npv_AWm,           "npv/I");          // number of primary vertices
+  outTree_AWm->Branch("genVPt",        &genVPt_AWm,        "genVPt/F");       // GEN boson pT (signal MC)
+  outTree_AWm->Branch("genVPhi",       &genVPhi_AWm,       "genVPhi/F");      // GEN boson phi (signal MC)
+  outTree_AWm->Branch("genVy",         &genVy_AWm,         "genVy/F");        // GEN boson rapidity (signal MC)
+  outTree_AWm->Branch("genVMass",      &genVMass_AWm,      "genVMass/F");     // GEN boson mass (signal MC)
+  outTree_AWm->Branch("genLepPt",      &genLepPt_AWm,      "genLepPt/F");     // GEN lepton pT (signal MC)
+  outTree_AWm->Branch("genLepPhi",     &genLepPhi_AWm,     "genLepPhi/F");    // GEN lepton phi (signal MC)
+  outTree_AWm->Branch("scale1fb",      &scale1fb_AWm,      "scale1fb/F");     // event weight per 1/fb (MC)
+  outTree_AWm->Branch("rawpfmet",      &rawpfmet_AWm,      "rawpfmet/F");     // Raw PF MET
+  outTree_AWm->Branch("rawpfmetPhi",   &rawpfmetPhi_AWm,   "rawpfmetPhi/F");  // Raw PF MET phi
+  outTree_AWm->Branch("type1pfmet",    &type1pfmet_AWm,    "type1pfmet/F");   // Type-1 corrected PF MET
+  outTree_AWm->Branch("type1pfmetPhi", &type1pfmetPhi_AWm, "type1pfmetPhi/F");// Type-1 corrected PF MET phi
+  outTree_AWm->Branch("genmet",        &genmet_AWm,        "genmet/F");       // Generator level MET
+  outTree_AWm->Branch("genmetPhi",     &genmetPhi_AWm,     "genmetPhi/F");    // Generator level MET phi
+  outTree_AWm->Branch("mt",            &mt_AWm,            "mt/F");           // transverse mass
+  outTree_AWm->Branch("u1",            &u1_AWm,            "u1/F");           // parallel component of recoil
+  outTree_AWm->Branch("u2",            &u2_AWm,            "u2/F");           // perpendicular component of recoil 
+  outTree_AWm->Branch("q",             &q_AWm,             "q/I");            // lepton charge
+  outTree_AWm->Branch("lep", "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &lep_AWm);   // lepton 4-vector
   ///// muon specific /////
-  outTree_Wm->Branch("pfChIso",       &pfChIso_Wm,       "pfChIso/F");      // PF charged hadron isolation of muon
-  outTree_Wm->Branch("pfGamIso",      &pfGamIso_Wm,      "pfGamIso/F");     // PF photon isolation of muon
-  outTree_Wm->Branch("pfNeuIso",      &pfNeuIso_Wm,      "pfNeuIso/F");     // PF neutral hadron isolation of muon
-  outTree_Wm->Branch("isLooseMuon",   &isLooseMuon_Wm,  "isLooseMuon/I");   // loose muon ID
-  outTree_Wm->Branch("isSoftMuon",    &isSoftMuon_Wm,   "isSoftMuon/I");    // loose muon ID
-  outTree_Wm->Branch("isTightMuon",   &isTightMuon_Wm,  "isTightMuon/I");   // tight muon ID
-  outTree_Wm->Branch("passSingleMuTrigger", &passSingleMuTrigger_Wm, "passSingleMuTrigger/I"); // single muon trigger
-  outTree_Wm->Branch("matchTrigObj",  &matchTrigObj_Wm, "matchTrigObj/I");  // lepton match to trigger object
+  outTree_AWm->Branch("pfChIso",       &pfChIso_AWm,       "pfChIso/F");      // PF charged hadron isolation of muon
+  outTree_AWm->Branch("pfGamIso",      &pfGamIso_AWm,      "pfGamIso/F");     // PF photon isolation of muon
+  outTree_AWm->Branch("pfNeuIso",      &pfNeuIso_AWm,      "pfNeuIso/F");     // PF neutral hadron isolation of muon
+  outTree_AWm->Branch("isLooseMuon",   &isLooseMuon_AWm,   "isLooseMuon/F");  // loose muon ID
+  outTree_AWm->Branch("isSoftMuon",    &isSoftMuon_AWm,    "isSoftMuon/F");   // loose muon ID
+  outTree_AWm->Branch("isTightMuon",   &isTightMuon_AWm,   "isTightMuon/F");  // tight muon ID
+  outTree_AWm->Branch("passSingleMuTrigger", &passSingleMuTrigger_AWm, "passSingleMuTrigger/I"); // single muon trigger
+  outTree_AWm->Branch("matchTrigObj",  &matchTrigObj_AWm,  "matchTrigObj/I"); // lepton match to trigger object
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
 void 
-selectWm::endJob() 
+selectAntiWm::endJob() 
 {
    // Save tree in output file
-   outFile_Wm->Write();
-   outFile_Wm->Close();
+   outFile_AWm->Write();
+   outFile_AWm->Close();
 
   //--------------------------------------------------------------------------------------------------------------
   // Output
@@ -353,21 +356,21 @@ selectWm::endJob()
   std::cout << "*" << std::endl;
   std::cout << "* SUMMARY" << std::endl;
   std::cout << "*--------------------------------------------------" << std::endl;
-  std::cout << "W -> mu nu" << std::endl;
+  std::cout << "W -> mu nu anti-selection" << std::endl;
   std::cout << " pT > " << PT_CUT << std::endl;
   std::cout << " |eta| < " << ETA_CUT << std::endl;
-  std::cout << nsel_Wm << " +/- " << sqrt(nsel_Wm) << " per 1/fb" << std::endl;
+  std::cout << nsel_AWm << " +/- " << sqrt(nsel_AWm) << " per 1/fb" << std::endl;
   std::cout << std::endl;
 
   std::cout << std::endl;
-  std::cout << "  <> Output saved in " << outFilename_Wm << "/" << std::endl;
+  std::cout << "  <> Output saved in " << outFilename_AWm << "/" << std::endl;
   std::cout << std::endl;
 }
 
 // ------------ method called when starting to processes a run  ------------
 /*
 void 
-selectWm::beginRun(edm::Run const&, edm::EventSetup const&)
+selectAntiWm::beginRun(edm::Run const&, edm::EventSetup const&)
 {
 }
 */
@@ -375,7 +378,7 @@ selectWm::beginRun(edm::Run const&, edm::EventSetup const&)
 // ------------ method called when ending the processing of a run  ------------
 /*
 void 
-selectWm::endRun(edm::Run const&, edm::EventSetup const&)
+selectAntiWm::endRun(edm::Run const&, edm::EventSetup const&)
 {
 }
 */
@@ -383,7 +386,7 @@ selectWm::endRun(edm::Run const&, edm::EventSetup const&)
 // ------------ method called when starting to processes a luminosity block  ------------
 /*
 void 
-selectWm::beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
+selectAntiWm::beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
 {
 }
 */
@@ -391,14 +394,14 @@ selectWm::beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup cons
 // ------------ method called when ending the processing of a luminosity block  ------------
 /*
 void 
-selectWm::endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
+selectAntiWm::endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
 {
 }
 */
 
 // ------------ method fills 'descriptions' with the allowed parameters for the module  ------------
 void
-selectWm::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+selectAntiWm::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   //The following says we do not know what parameters are allowed so do no validation
   // Please change this to state exactly what you do use, even if it is no parameters
   edm::ParameterSetDescription desc;
@@ -407,4 +410,4 @@ selectWm::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
 }
 
 //define this as a plug-in
-DEFINE_FWK_MODULE(selectWm);
+DEFINE_FWK_MODULE(selectAntiWm);

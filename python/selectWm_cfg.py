@@ -24,6 +24,8 @@ process.demo = cms.EDAnalyzer('selectWm',
     muons = cms.InputTag("slimmedMuons"),
     mets = cms.InputTag("slimmedMETs"),
     pfCands = cms.InputTag("packedPFCandidates"),
+    bits = cms.InputTag("TriggerResults","","HLT"),
+    objects = cms.InputTag("selectedPatTrigger"),
 )
 
 process.p = cms.Path(process.demo)

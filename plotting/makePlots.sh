@@ -1,16 +1,37 @@
-# This script makes plots of
-#	1) Different types of MET
-#	2) Basic lepton characteristics (pT, eta, phi)
-#	3) Hadronic recoil resolution for Z->ee and Z->mm samples
+SAMPLE_DIR=/scratch3/cmedlock/PHYS14/Selection
 
-SAMPLE_DIR=/scratch/cmedlock/PHYS14
-ZLL_SAMPLES=DYJetsToLL_M-50_13TeV-madgraph-pythia8/PU20bx25_PHYS14_V1-v1/00000
-WJETS_SAMPLES=WJetsToLNu_13TeV-madgraph-pythia8-tauola/PU20bx25_PHYS14_25_V1-v1/00000
+#
+# Z->ee and Z->mm dilepton mass plots: dependency on PU
+#
+root -l plotDileptonMass.C+\(\"$SAMPLE_DIR/Zee/zee_select_PU4bx50.root\",\"$SAMPLE_DIR/Zee/zee_select_PU20bx25.root\"\)
+root -l plotDileptonMass.C+\(\"$SAMPLE_DIR/Zmm/zmm_select_PU4bx50.root\",\"$SAMPLE_DIR/Zmm/zmm_select_PU20bx25.root\"\)
 
-#root -l -q plotWe.C+\(\"$SAMPLE_DIR/$WJETS_SAMPLES/selectWe.root\"\)
-root -l -q plotWm.C+\(\"$SAMPLE_DIR/$WJETS_SAMPLES/selectWm.root\"\)
+#
+# Z->ee MET resolution and hadronic recoil plots
+#
+#root -l -q plotMET_res_recoil.C+\(\"$SAMPLE_DIR/Zee/zee_select_PU4bx50.root\",\"./zee_metplots_PU4bx50.root\"\)
+#root -l -q plotMET_res_recoil.C+\(\"$SAMPLE_DIR/Zee/zee_select_PU20bx25.root\",\"./zee_metplots_PU20bx25.root\"\)
+#root -l mergeMetPlots_res_recoil.C+\(\"./zee_metplots_PU4bx50.root\",\"./zee_metplots_PU20bx25.root\"\)
 
-#root -l -q plotZll_recoil.C+\(\"$SAMPLE_DIR/$ZLL_SAMPLES/selectZee.root\"\)
-#root -l -q plotZll_recoil.C+\(\"$SAMPLE_DIR/$ZLL_SAMPLES/selectZmm.root\"\)
+#
+# Z->mm MET resolution and hadronic recoil plots
+#
+#root -l -q plotMET_res_recoil.C+\(\"$SAMPLE_DIR/Zmm/zmm_select_PU4bx50.root\",\"./zmm_metplots_PU4bx50.root\"\)
+#root -l -q plotMET_res_recoil.C+\(\"$SAMPLE_DIR/Zmm/zmm_select_PU20bx25.root\",\"./zmm_metplots_PU20bx25.root\"\)
+#root -l mergeMetPlots_res_recoil.C+\(\"./zmm_metplots_PU4bx50.root\",\"./zmm_metplots_PU20bx25.root\"\)
+
+#
+# W->ev MET distributions: dependency on PU
+#
+#root -l -q plotMET.C+\(\"$SAMPLE_DIR/Wenu/we_select_PU4bx50.root\",\"./wenu_metplots_PU4bx50.root\"\)
+#root -l -q plotMET.C+\(\"$SAMPLE_DIR/Wenu/we_select_PU20bx25.root\",\"./wenu_metplots_PU20bx25.root\"\)
+#root -l mergeMetPlots.C+\(\"./wenu_metplots_PU4bx50.root\",\"./wenu_metplots_PU20bx25.root\"\)
+
+#
+# W->mv MET distributions: dependency on PU
+#
+#root -l -q plotMET.C+\(\"$SAMPLE_DIR/Wmunu/wm_select_PU4bx50.root\",\"./wmunu_metplots_PU4bx50.root\"\)
+#root -l -q plotMET.C+\(\"$SAMPLE_DIR/Wmunu/wm_select_PU20bx25.root\",\"./wmunu_metplots_PU20bx25.root\"\)
+#root -l mergeMetPlots.C+\(\"./wmunu_metplots_PU4bx50.root\",\"./wmunu_metplots_PU20bx25.root\"\)
 
 rm *~ *.d *.so

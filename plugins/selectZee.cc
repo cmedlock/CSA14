@@ -27,6 +27,7 @@
 #include "FWCore/Framework/interface/MakerMacros.h"
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
+#include "FWCore/Common/interface/TriggerNames.h"
 
 #include "DataFormats/VertexReco/interface/VertexFwd.h"
 #include "DataFormats/VertexReco/interface/Vertex.h"
@@ -40,6 +41,8 @@
 #include "DataFormats/Common/interface/View.h"
 
 #include "DataFormats/Math/interface/deltaR.h"
+#include "DataFormats/Common/interface/TriggerResults.h"
+#include "DataFormats/PatCandidates/interface/TriggerObjectStandAlone.h"
 
 #include <TSystem.h>                // interface to OS
 #include <TFile.h>                  // file handle class
@@ -74,6 +77,8 @@ class selectZee : public edm::EDAnalyzer {
       edm::EDGetTokenT<pat::ElectronCollection> electronToken_;
       edm::EDGetTokenT<pat::METCollection> metToken_;
       edm::EDGetTokenT<pat::PackedCandidateCollection> pfToken_;
+      edm::EDGetTokenT<edm::TriggerResults> triggerBits_;
+      edm::EDGetTokenT<pat::TriggerObjectStandAloneCollection> triggerObjects_;
 };
 
 //
@@ -92,7 +97,7 @@ typedef ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> > LorentzVecto
 
 const Double_t ELE_MASS = 0.000511;
 
-Double_t nsel_Zee=0, eventCounter_Zee=0;
+Double_t nsel_Zee=0;
 
 TString outFilename_Zee = TString("selectZee.root");
 TFile *outFile_Zee = new TFile();
@@ -101,7 +106,7 @@ TTree *outTree_Zee = new TTree();
 //
 // Declare output ntuple variables
 //
-Int_t  matchGen_Zee=0, npv_Zee=0, nEvents_Zee=0;
+Int_t  matchGen_Zee=0, npv_Zee=0;
 Float_t genVPdgID_Zee=0, genVPt_Zee=0, genVPhi_Zee=0, genVy_Zee=0, genVMass_Zee=0;
 Float_t rawpfmet_Zee=0, rawpfmetPhi_Zee=0;
 Float_t type1pfmet_Zee=0, type1pfmetPhi_Zee=0;
@@ -113,6 +118,7 @@ LorentzVector *dilep_Zee=0, *lep1_Zee=0, *lep2_Zee=0;
 LorentzVector *sc1_Zee=0, *sc2_Zee=0;
 Int_t isVetoEle1=0, isLooseEle1=0, isMediumEle1=0, isTightEle1=0;
 Int_t isVetoEle2=0, isLooseEle2=0, isMediumEle2=0, isTightEle2=0;
+Int_t passSingleEleTrigger_Zee=0, matchTrigObj1_Zee=0, matchTrigObj2_Zee=0;
 
 //
 // constructors and destructor
@@ -121,7 +127,9 @@ selectZee::selectZee(const edm::ParameterSet& iConfig):
    vtxToken_(consumes<reco::VertexCollection>(iConfig.getParameter<edm::InputTag>("vertices"))),
    electronToken_(consumes<pat::ElectronCollection>(iConfig.getParameter<edm::InputTag>("electrons"))),
    metToken_(consumes<pat::METCollection>(iConfig.getParameter<edm::InputTag>("mets"))),
-   pfToken_(consumes<pat::PackedCandidateCollection>(iConfig.getParameter<edm::InputTag>("pfCands")))
+   pfToken_(consumes<pat::PackedCandidateCollection>(iConfig.getParameter<edm::InputTag>("pfCands"))),
+   triggerBits_(consumes<edm::TriggerResults>(iConfig.getParameter<edm::InputTag>("bits"))),
+   triggerObjects_(consumes<pat::TriggerObjectStandAloneCollection>(iConfig.getParameter<edm::InputTag>("objects")))
 {
    //now do what ever initialization is needed
 
@@ -148,9 +156,6 @@ selectZee::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 
    using namespace edm;
 
-   // Count the total number of MC events processed
-   eventCounter_Zee++;
-
    Handle<reco::VertexCollection> vertices;
    iEvent.getByToken(vtxToken_, vertices);
    // Good vertex requirement
@@ -160,6 +165,18 @@ selectZee::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    Handle<pat::ElectronCollection> electrons;
    iEvent.getByToken(electronToken_, electrons);
    if(electrons->size()<2) return; // Skip the event if there is no possibility of both tag and probe leptons
+
+   edm::Handle<edm::TriggerResults> triggerBits;
+   edm::Handle<pat::TriggerObjectStandAloneCollection> triggerObjects;
+   iEvent.getByToken(triggerBits_, triggerBits);
+   iEvent.getByToken(triggerObjects_, triggerObjects);
+   const edm::TriggerNames &names = iEvent.triggerNames(*triggerBits);
+   const TString singleEle("HLT_Ele27_eta2p1_WP85_Gsf_v1");
+   for (unsigned int i = 0, n = triggerBits->size(); i < n; ++i) {
+       if((const TString)names.triggerName(i)!=singleEle) continue;
+       passSingleEleTrigger_Zee = triggerBits->accept(i) ? 1 : 0;
+       break;
+   }
 
    //
    // SELECTION PROCEDURE:
@@ -189,6 +206,17 @@ selectZee::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      isMediumEle1 = tag.electronID("cutBasedElectronID-CSA14-PU20bx25-V0-standalone-medium");
      isTightEle1  = tag.electronID("cutBasedElectronID-CSA14-PU20bx25-V0-standalone-tight");
 
+     // Match to a trigger object
+     matchTrigObj1_Zee = 0;
+     Int_t nObj = 0, tagTrigObjIdx = triggerObjects->size();
+     if(passSingleEleTrigger_Zee) {
+       for (pat::TriggerObjectStandAlone obj : *triggerObjects) { // note: not "const &" since we want to call unpackPathNames
+           matchTrigObj1_Zee = (sqrt((tag.eta()-obj.eta())*(tag.eta()-obj.eta())+(tag.phi()-obj.phi())*(tag.phi()-obj.phi())) <= 0.2) ? 1 : 0;
+           if(matchTrigObj1_Zee) tagTrigObjIdx = nObj;
+           nObj++;
+       }
+     }
+
      for (unsigned int i2=0;i2 < electrons->size();i2++) {
        if(i2==i1) continue;
        const pat::Electron &probe = (*electrons)[i2];
@@ -206,6 +234,17 @@ selectZee::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
        isLooseEle2  = probe.electronID("cutBasedElectronID-CSA14-PU20bx25-V0-standalone-loose");
        isMediumEle2 = probe.electronID("cutBasedElectronID-CSA14-PU20bx25-V0-standalone-medium");
        isTightEle2  = probe.electronID("cutBasedElectronID-CSA14-PU20bx25-V0-standalone-tight");
+
+       // Match to a trigger object
+       matchTrigObj2_Zee = 0;
+       if(passSingleEleTrigger_Zee) {
+         Int_t nProbeObj = 0;
+         for (pat::TriggerObjectStandAlone obj : *triggerObjects) { // note: not "const &" since we want to call unpackPathNames
+             if(matchTrigObj1_Zee && nProbeObj==tagTrigObjIdx) continue; // Do not want to match the tag and the probe to the same object
+             matchTrigObj2_Zee = (sqrt((probe.eta()-obj.eta())*(probe.eta()-obj.eta())+(probe.phi()-obj.phi())*(probe.phi()-obj.phi())) <= 0.2) ? 1 : 0;
+             nProbeObj++;
+         }
+       }
 
        // Dilepton 4-vector
        LorentzVector vDilep = vTag + vProbe;
@@ -310,8 +349,6 @@ selectZee::beginJob()
 
   outTree_Zee->Branch("matchGen",      &matchGen_Zee,      "matchGen/I");         // event has both leptons matched to MC Z->ll
   outTree_Zee->Branch("npv",           &npv_Zee,           "npv/I");              // number of primary vertices
-  outTree_Zee->Branch("nEvents",       &nEvents_Zee,       "nEvents/I");          // total number of MC events processed
-                                                                                  // (will be used for event weighting in signal extraction)
   outTree_Zee->Branch("genVPt",        &genVPt_Zee,        "genVPt/F");           // GEN boson pT (signal MC)
   outTree_Zee->Branch("genVPhi",       &genVPhi_Zee,       "genVPhi/F");          // GEN boson phi (signal MC)
   outTree_Zee->Branch("genVy",         &genVy_Zee,         "genVy/F");            // GEN boson rapidity (signal MC)
@@ -341,31 +378,15 @@ selectZee::beginJob()
   outTree_Zee->Branch("isLooseEle2",  &isLooseEle2,     "isLooseEle2/I");  // probe lepton loose electron ID
   outTree_Zee->Branch("isMediumEle2", &isMediumEle2,    "isMediumEle2/I"); // probe lepton medium electron ID
   outTree_Zee->Branch("isTightEle2",  &isTightEle2,     "isTightEle2/I");  // probe lepton tight electron ID
+  outTree_Zee->Branch("passSingleEleTrigger", &passSingleEleTrigger_Zee, "passSingleEleTrigger/I"); // single electron trigger
+  outTree_Zee->Branch("matchTrigObj1", &matchTrigObj1_Zee,  "matchTrigObj1/I"); // tag lepton match to trigger object
+  outTree_Zee->Branch("matchTrigObj2", &matchTrigObj2_Zee,  "matchTrigObj2/I"); // probe lepton match to trigger object
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
 void 
 selectZee::endJob() 
 {
-   // The only information in the last entry of the output tree
-   // is the total number of MC events processed
-   nEvents_Zee = eventCounter_Zee;
-   // Set everything else to zero
-   matchGen_Zee=0; npv_Zee=0;
-   genVPdgID_Zee=0; genVPt_Zee=0; genVPhi_Zee=0; genVy_Zee=0; genVMass_Zee=0;
-   rawpfmet_Zee=0; rawpfmetPhi_Zee=0;
-   type1pfmet_Zee=0; type1pfmetPhi_Zee=0;
-   genmet_Zee=0; genmetPhi_Zee=0;
-   u1_Zee=0; u2_Zee=0;
-   q1_Zee=0; q2_Zee=0;
-   pfChIso1_Zee=0; pfChIso2_Zee=0;
-   dilep_Zee=0; lep1_Zee=0; lep2_Zee=0;
-   sc1_Zee=0; sc2_Zee=0;
-   isVetoEle1=0; isLooseEle1=0; isMediumEle1=0; isTightEle1=0;
-   isVetoEle2=0; isLooseEle2=0; isMediumEle2=0; isTightEle2=0;
-
-   outTree_Zee->Fill();
-
    // Save tree in output file
    outFile_Zee->Write();
    outFile_Zee->Close();

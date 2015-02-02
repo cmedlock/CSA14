@@ -27,6 +27,7 @@
 #include "FWCore/Framework/interface/MakerMacros.h"
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
+#include "FWCore/Common/interface/TriggerNames.h"
 
 #include "DataFormats/VertexReco/interface/VertexFwd.h"
 #include "DataFormats/VertexReco/interface/Vertex.h"
@@ -35,6 +36,8 @@
 #include "DataFormats/PatCandidates/interface/PackedCandidate.h"
 
 #include "DataFormats/Math/interface/deltaR.h"
+#include "DataFormats/Common/interface/TriggerResults.h"
+#include "DataFormats/PatCandidates/interface/TriggerObjectStandAlone.h"
 
 #include <TSystem.h>                // interface to OS
 #include <TFile.h>                  // file handle class
@@ -68,7 +71,8 @@ class selectWe : public edm::EDAnalyzer {
       edm::EDGetTokenT<pat::ElectronCollection> electronToken_;
       edm::EDGetTokenT<pat::METCollection> metToken_;
       edm::EDGetTokenT<pat::PackedCandidateCollection> pfToken_;
-      edm::EDGetTokenT<double> rhoToken_;
+      edm::EDGetTokenT<edm::TriggerResults> triggerBits_;
+      edm::EDGetTokenT<pat::TriggerObjectStandAloneCollection> triggerObjects_;
 };
 
 //
@@ -93,7 +97,7 @@ const Double_t ECAL_GAP_LOW  = 1.4442;
 const Double_t ECAL_GAP_HIGH = 1.566;
 
 // Count total number of events selected
-Double_t nsel_We=0, eventCounter_We=0;
+Double_t nsel_We=0;
 
 TString outFilename = TString("selectWe.root");
 TFile *outFile = new TFile();
@@ -102,7 +106,7 @@ TTree *outTree_We = new TTree();
 //
 // Declare output ntuple variables
 //
-Int_t  npv_We=0, nEvents_We=0;
+Int_t  npv_We=0;
 Float_t genVPdgID_We=0, genVPt_We=0, genVPhi_We=0, genVy_We=0, genVMass_We=0;
 Float_t genLepPdgID_We=0, genLepPt_We=0, genLepPhi_We=0;
 Float_t rawpfmet_We=0, rawpfmetPhi_We=0;
@@ -115,6 +119,7 @@ LorentzVector *lep_We=0;
 Float_t pfChIso_We=0, pfGamIso_We=0, pfNeuIso_We=0;
 Int_t isVetoEle_We=0, isLooseEle_We=0, isMediumEle_We=0, isTightEle_We=0;
 LorentzVector *sc_We=0;
+Int_t passSingleEleTrigger_We=0, matchTrigObj_We=0;
 
 //
 // constructors and destructor
@@ -124,7 +129,8 @@ selectWe::selectWe(const edm::ParameterSet& iConfig):
    electronToken_(consumes<pat::ElectronCollection>(iConfig.getParameter<edm::InputTag>("electrons"))),
    metToken_(consumes<pat::METCollection>(iConfig.getParameter<edm::InputTag>("mets"))),
    pfToken_(consumes<pat::PackedCandidateCollection>(iConfig.getParameter<edm::InputTag>("pfCands"))),
-   rhoToken_(consumes<double>(iConfig.getParameter<edm::InputTag>("rhos")))
+   triggerBits_(consumes<edm::TriggerResults>(iConfig.getParameter<edm::InputTag>("bits"))),
+   triggerObjects_(consumes<pat::TriggerObjectStandAloneCollection>(iConfig.getParameter<edm::InputTag>("objects")))
 {
    //now do what ever initialization is needed
 }
@@ -150,9 +156,6 @@ selectWe::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 
    using namespace edm;
 
-   // Count total number of MC events processed
-   eventCounter_We++;
-
    Handle<reco::VertexCollection> vertices;
    iEvent.getByToken(vtxToken_, vertices);
    // good vertex requirement
@@ -160,13 +163,21 @@ selectWe::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    npv_We = vertices->size();
 //   const reco::Vertex &PV = vertices->front();
 
-   Handle<double> rhoHandle;
-   iEvent.getByToken(rhoToken_, rhoHandle);
-   Double_t rho = *rhoHandle.product();
-
    Handle<pat::ElectronCollection> electrons;
    iEvent.getByToken(electronToken_, electrons);
    if(electrons->size()==0) return; // skip the event if there are no electrons
+
+   edm::Handle<edm::TriggerResults> triggerBits;
+   edm::Handle<pat::TriggerObjectStandAloneCollection> triggerObjects;
+   iEvent.getByToken(triggerBits_, triggerBits);
+   iEvent.getByToken(triggerObjects_, triggerObjects);
+   const edm::TriggerNames &names = iEvent.triggerNames(*triggerBits);
+   const TString singleEle("HLT_Ele27_eta2p1_WP85_Gsf_v1");
+   for (unsigned int i = 0, n = triggerBits->size(); i < n; ++i) {
+       if((const TString)names.triggerName(i)!=singleEle) continue;
+       passSingleEleTrigger_We = triggerBits->accept(i) ? 1 : 0;
+       break;
+   }
 
    //
    // SELECTION PROCEDURE:
@@ -182,23 +193,12 @@ selectWe::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      // check ECAL gap
      if(fabs(ele.superCluster()->eta())>=ECAL_GAP_LOW && fabs(ele.superCluster()->eta())<=ECAL_GAP_HIGH) continue;
 
-     Double_t ea = 0;
-     if (fabs(ele.eta()) < 1.0) ea = 0.100;
-     else if(fabs(ele.eta()) < 1.479) ea = 0.120;
-     else if(fabs(ele.eta()) < 2.0) ea = 0.085;
-     else if(fabs(ele.eta()) < 2.2) ea = 0.110;
-     else if(fabs(ele.eta()) < 2.3) ea = 0.120;
-     else if(fabs(ele.eta()) < 2.4) ea = 0.120;
-     else ea = 0.130;
-
-     Double_t iso = ele.chargedHadronIso() + TMath::Max(ele.neutralHadronIso() + ele.photonIso() - rho*ea,0.);
-
      isLooseEle_We = ele.electronID("cutBasedElectronID-CSA14-PU20bx25-V0-standalone-loose");
      isTightEle_We = ele.electronID("cutBasedElectronID-CSA14-PU20bx25-V0-standalone-tight");
 
      if(fabs(ele.superCluster()->eta())> 2.5)  continue;    // lepton |eta| cut
      if(ele.superCluster()->energy()   < 20 )  continue;    // lepton pT cut
-     if(isLooseEle_We && iso <= 0.15*ele.pt()) nLooseLep++; // loose lepton selection
+     if(isLooseEle_We && ele.chargedHadronIso() <= 0.15*ele.pt()) nLooseLep++; // loose lepton selection
      if(nLooseLep>1) { // extra lepton veto
        passSel=kFALSE;
        break;
@@ -206,7 +206,7 @@ selectWe::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 
      if(fabs(ele.superCluster()->eta()) > ETA_CUT) continue; // lepton |eta| cut
      if(ele.superCluster()->energy()    < PT_CUT ) continue; // lepton pT cut
-     if(!(isTightEle_We && iso <= 0.15*ele.pt()))  continue; // lepton selection
+     if(!(isTightEle_We && ele.chargedHadronIso() <= 0.15*ele.pt()))  continue; // lepton selection
 
      passSel = kTRUE;
      goodEleIdx = jElectron;
@@ -225,6 +225,14 @@ selectWe::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    isLooseEle_We  = goodEle.electronID("cutBasedElectronID-CSA14-PU20bx25-V0-standalone-loose");
    isMediumEle_We = goodEle.electronID("cutBasedElectronID-CSA14-PU20bx25-V0-standalone-medium");
    isTightEle_We  = goodEle.electronID("cutBasedElectronID-CSA14-PU20bx25-V0-standalone-tight");
+
+   // Match to a trigger object
+   matchTrigObj_We = 0;
+   if(passSingleEleTrigger_We) {
+     for (pat::TriggerObjectStandAlone obj : *triggerObjects) { // note: not "const &" since we want to call unpackPathNames
+         matchTrigObj_We = (sqrt((goodEle.eta()-obj.eta())*(goodEle.eta()-obj.eta())+(goodEle.phi()-obj.phi())*(goodEle.phi()-obj.phi())) <= 0.2) ? 1 : 0;
+     }
+   }
 
    // Lepton and supercluster 4-vectors
    LorentzVector vLep(goodEle.pt(),goodEle.eta(),goodEle.phi(),ELE_MASS);
@@ -312,8 +320,6 @@ selectWe::beginJob()
   outTree_We = new TTree("Events","Events");
 
   outTree_We->Branch("npv",           &npv_We,           "npv/I");          // number of primary vertices
-  outTree_We->Branch("nEvents",       &nEvents_We,       "nEvents/I");      // total number of MC events processed
-                                                                            // (will be used for event weighting in signal extraction)
   outTree_We->Branch("genVPt",        &genVPt_We,        "genVPt/F");       // GEN boson pT (signal MC)
   outTree_We->Branch("genVPhi",       &genVPhi_We,       "genVPhi/F");      // GEN boson phi (signal MC)
   outTree_We->Branch("genVy",         &genVy_We,         "genVy/F");        // GEN boson rapidity (signal MC)
@@ -336,36 +342,18 @@ selectWe::beginJob()
   outTree_We->Branch("pfChIso",       &pfChIso_We,       "pfChIso/F");      // PF charged hadron isolation of electron
   outTree_We->Branch("pfGamIso",      &pfGamIso_We,      "pfGamIso/F");     // PF photon isolation of electron
   outTree_We->Branch("pfNeuIso",      &pfNeuIso_We,      "pfNeuIso/F");     // PF neutral hadron isolation of electron
-  outTree_We->Branch("isVetoEle",     &isVetoEle_We,     "isVetoEle/I");    // tag lepton veto electron ID
-  outTree_We->Branch("isLooseEle",    &isLooseEle_We,    "isLooseEle/I");   // tag lepton loose electron ID
-  outTree_We->Branch("isMediumEle",   &isMediumEle_We,   "isMediumEle/I");  // tag lepton medium electron ID
-  outTree_We->Branch("isTightEle",    &isTightEle_We,    "isTightEle/I");   // tag lepton tight electron ID
+  outTree_We->Branch("isVetoEle",     &isVetoEle_We,     "isVetoEle/I");    // lepton veto electron ID
+  outTree_We->Branch("isLooseEle",    &isLooseEle_We,    "isLooseEle/I");   // lepton loose electron ID
+  outTree_We->Branch("isMediumEle",   &isMediumEle_We,   "isMediumEle/I");  // lepton medium electron ID
+  outTree_We->Branch("isTightEle",    &isTightEle_We,    "isTightEle/I");   // lepton tight electron ID
+  outTree_We->Branch("passSingleEleTrigger", &passSingleEleTrigger_We, "passSingleEleTrigger/I"); // single electron trigger
+  outTree_We->Branch("matchTrigObj",  &matchTrigObj_We,   "matchTrigObj/I"); // lepton match to trigger object
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
 void 
 selectWe::endJob() 
 {
-   // The only information in the last entry of the output tree
-   // is the total number of MC events processed
-   nEvents_We = eventCounter_We;
-   // Set everything else to zero
-   npv_We=0;
-   genVPdgID_We=0; genVPt_We=0; genVPhi_We=0; genVy_We=0; genVMass_We=0;
-   genLepPdgID_We=0; genLepPt_We=0; genLepPhi_We=0;
-   rawpfmet_We=0; rawpfmetPhi_We=0;
-   type1pfmet_We=0; type1pfmetPhi_We=0;
-   genmet_We=0; genmetPhi_We=0;
-   mt_We=0; u1_We=0; u2_We=0;
-   q_We=0;
-   lep_We=0;
-   ///// electron specific /////
-   pfChIso_We=0; pfGamIso_We=0; pfNeuIso_We=0;
-   isVetoEle_We=0; isLooseEle_We=0; isMediumEle_We=0; isTightEle_We=0;
-   sc_We=0;
-
-   outTree_We->Fill();
-
    // Save tree to output file
    outFile->Write();
    outFile->Close();

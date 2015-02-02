@@ -9,7 +9,7 @@ options.parseArguments()
 process.load("FWCore.MessageService.MessageLogger_cfi")
 
 #process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(-1) )
-process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(10) )
+process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(1000000) )
 
 process.source = cms.Source("PoolSource",
     # replace 'myfile.root' with the source file you want to use
@@ -24,6 +24,8 @@ process.demo = cms.EDAnalyzer('selectWe',
     electrons = cms.InputTag("slimmedElectrons"),
     mets = cms.InputTag("slimmedMETs"),
     pfCands = cms.InputTag("packedPFCandidates"),
+    bits = cms.InputTag("TriggerResults","","HLT"),
+    objects = cms.InputTag("selectedPatTrigger"),
 )
 
 process.p = cms.Path(process.demo)

@@ -27,6 +27,7 @@
 #include "FWCore/Framework/interface/MakerMacros.h"
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
+#include "FWCore/Common/interface/TriggerNames.h"
 
 #include "DataFormats/VertexReco/interface/VertexFwd.h"
 #include "DataFormats/VertexReco/interface/Vertex.h"
@@ -35,6 +36,8 @@
 #include "DataFormats/PatCandidates/interface/PackedCandidate.h"
 
 #include "DataFormats/Math/interface/deltaR.h"
+#include "DataFormats/Common/interface/TriggerResults.h"
+#include "DataFormats/PatCandidates/interface/TriggerObjectStandAlone.h"
 
 #include <TSystem.h>                // interface to OS
 #include <TFile.h>                  // file handle class
@@ -68,6 +71,8 @@ class selectZmm : public edm::EDAnalyzer {
       edm::EDGetTokenT<pat::MuonCollection> muonToken_;
       edm::EDGetTokenT<pat::METCollection> metToken_;
       edm::EDGetTokenT<pat::PackedCandidateCollection> pfToken_;
+      edm::EDGetTokenT<edm::TriggerResults> triggerBits_;
+      edm::EDGetTokenT<pat::TriggerObjectStandAloneCollection> triggerObjects_;
 };
 
 //
@@ -86,7 +91,7 @@ typedef ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> > LorentzVecto
 
 const Double_t MUON_MASS = 0.105658369;
 
-Double_t nsel_Zmm=0, eventCounter_Zmm=0;
+Double_t nsel_Zmm=0;
 
 TString outFilename_Zmm = TString("selectZmm.root");
 TFile *outFile_Zmm = new TFile();
@@ -95,7 +100,7 @@ TTree *outTree_Zmm = new TTree();
 //
 // Declare output ntuple variables
 //
-Int_t  matchGen_Zmm=0, npv_Zmm=0, nEvents_Zmm=0;
+Int_t  matchGen_Zmm=0, npv_Zmm=0;
 Float_t genVPdgID_Zmm=0, genVPt_Zmm=0, genVPhi_Zmm=0, genVy_Zmm=0, genVMass_Zmm=0;
 Float_t rawpfmet_Zmm=0, rawpfmetPhi_Zmm=0;
 Float_t type1pfmet_Zmm=0, type1pfmetPhi_Zmm=0;
@@ -106,6 +111,7 @@ Float_t pfChIso1_Zmm=0, pfChIso2_Zmm=0;
 LorentzVector *dilep_Zmm=0, *lep1_Zmm=0, *lep2_Zmm=0;
 Int_t isLooseMuon1_Zmm=0, isSoftMuon1_Zmm=0, isTightMuon1_Zmm=0;
 Int_t isLooseMuon2_Zmm=0, isSoftMuon2_Zmm=0, isTightMuon2_Zmm=0;
+Int_t passSingleMuTrigger_Zmm=0, matchTrigObj1_Zmm=0, matchTrigObj2_Zmm=0;
 
 //
 // constructors and destructor
@@ -114,7 +120,9 @@ selectZmm::selectZmm(const edm::ParameterSet& iConfig):
    vtxToken_(consumes<reco::VertexCollection>(iConfig.getParameter<edm::InputTag>("vertices"))),
    muonToken_(consumes<pat::MuonCollection>(iConfig.getParameter<edm::InputTag>("muons"))),
    metToken_(consumes<pat::METCollection>(iConfig.getParameter<edm::InputTag>("mets"))),
-   pfToken_(consumes<pat::PackedCandidateCollection>(iConfig.getParameter<edm::InputTag>("pfCands")))
+   pfToken_(consumes<pat::PackedCandidateCollection>(iConfig.getParameter<edm::InputTag>("pfCands"))),
+   triggerBits_(consumes<edm::TriggerResults>(iConfig.getParameter<edm::InputTag>("bits"))),
+   triggerObjects_(consumes<pat::TriggerObjectStandAloneCollection>(iConfig.getParameter<edm::InputTag>("objects")))
 {
    //now do what ever initialization is needed
 }
@@ -138,9 +146,6 @@ selectZmm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
    using namespace edm;
 
-   // Count total number of MC events processed
-   eventCounter_Zmm++;
-
    Handle<reco::VertexCollection> vertices;
    iEvent.getByToken(vtxToken_, vertices);
    // Good vertex requirement
@@ -151,6 +156,18 @@ selectZmm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    Handle<pat::MuonCollection> muons;
    iEvent.getByToken(muonToken_, muons);
    if(muons->size()<2) return; // Skip the event if there is no possibility of both tag and probe leptons
+
+   edm::Handle<edm::TriggerResults> triggerBits;
+   edm::Handle<pat::TriggerObjectStandAloneCollection> triggerObjects;
+   iEvent.getByToken(triggerBits_, triggerBits);
+   iEvent.getByToken(triggerObjects_, triggerObjects);
+   const edm::TriggerNames &names = iEvent.triggerNames(*triggerBits);
+   const TString singleMu("HLT_IsoMu20_eta2p1_IterTrk02_v1");
+   for (unsigned int i = 0, n = triggerBits->size(); i < n; ++i) {
+       if((const TString)names.triggerName(i)!=singleMu) continue;
+       passSingleMuTrigger_Zmm = triggerBits->accept(i) ? 1 : 0;
+       break;
+   }
 
    //
    // SELECTION PROCEDURE:
@@ -178,6 +195,17 @@ selectZmm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      isSoftMuon1_Zmm  = tag.isSoftMuon(PV) ? 1 : 0;
      isTightMuon1_Zmm = tag.isTightMuon(PV) ? 1 : 0;
 
+     // Match to a trigger object
+     matchTrigObj1_Zmm = 0;
+     Int_t nObj = 0, tagTrigObjIdx = triggerObjects->size();
+     if(passSingleMuTrigger_Zmm) {
+       for (pat::TriggerObjectStandAlone obj : *triggerObjects) { // note: not "const &" since we want to call unpackPathNames
+           matchTrigObj1_Zmm = (sqrt((tag.eta()-obj.eta())*(tag.eta()-obj.eta())+(tag.phi()-obj.phi())*(tag.phi()-obj.phi())) <= 0.2) ? 1 : 0;
+           if(matchTrigObj1_Zmm) tagTrigObjIdx = nObj;
+           nObj++;
+       }
+     }
+
      for (unsigned int i2=0;i2 < muons->size();i2++) {
        if(i2==i1) continue;
        const pat::Muon &probe = (*muons)[i2];
@@ -192,6 +220,17 @@ selectZmm::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
        LorentzVector vProbe(probe.pt(),probe.eta(),probe.phi(),MUON_MASS);
 
        lep2_Zmm = &vProbe;
+
+       // Match to a trigger object
+       matchTrigObj2_Zmm = 0;
+       if(passSingleMuTrigger_Zmm) {
+         Int_t nProbeObj = 0;
+         for (pat::TriggerObjectStandAlone obj : *triggerObjects) { // note: not "const &" since we want to call unpackPathNames
+             if(matchTrigObj1_Zmm && nProbeObj==tagTrigObjIdx) continue; // Do not want to match the tag and the probe to the same object
+             matchTrigObj2_Zmm = (sqrt((probe.eta()-obj.eta())*(probe.eta()-obj.eta())+(probe.phi()-obj.phi())*(probe.phi()-obj.phi())) <= 0.2) ? 1 : 0;
+             nProbeObj++;
+         }
+       }
 
        // Dilepton 4-vector
        LorentzVector vDilep = vTag + vProbe;
@@ -296,8 +335,6 @@ selectZmm::beginJob()
 
   outTree_Zmm->Branch("matchGen",      &matchGen_Zmm,      "matchGen/I");      // event has both leptons matched to MC Z->ll
   outTree_Zmm->Branch("npv",           &npv_Zmm,           "npv/I");           // number of vertices
-  outTree_Zmm->Branch("nEvents",       &nEvents_Zmm,       "nEvents/I");       // total number of MC events processed
-                                                                               // (will be used for event weighting in signal extraction)
   outTree_Zmm->Branch("genVPt",        &genVPt_Zmm,        "genVPt/F");        // GEN boson pT (signal MC)
   outTree_Zmm->Branch("genVPhi",       &genVPhi_Zmm,       "genVPhi/F");       // GEN boson phi (signal MC)
   outTree_Zmm->Branch("genVy",         &genVy_Zmm,         "genVy/F");         // GEN boson rapidity (signal MC)
@@ -312,8 +349,8 @@ selectZmm::beginJob()
   outTree_Zmm->Branch("u2",            &u2_Zmm,            "u2/F");            // perpendicular component of recoil
   outTree_Zmm->Branch("q1",            &q1_Zmm,            "q1/I");            // tag lepton charge
   outTree_Zmm->Branch("q2",            &q2_Zmm,            "q2/I");            // probe lepton charge
-  outTree_Zmm->Branch("pfChIso1",      &pfChIso1_Zmm,      "pfChIso1/F");         // tag lepton charged hadron isolation
-  outTree_Zmm->Branch("pfChIso2",      &pfChIso2_Zmm,      "pfChIso2/F");         // probe lepton charged hadron isolation
+  outTree_Zmm->Branch("pfChIso1",      &pfChIso1_Zmm,      "pfChIso1/F");      // tag lepton charged hadron isolation
+  outTree_Zmm->Branch("pfChIso2",      &pfChIso2_Zmm,      "pfChIso2/F");      // probe lepton charged hadron isolation
   outTree_Zmm->Branch("dilep","ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &dilep_Zmm); // dilepton 4-vector
   outTree_Zmm->Branch("lep1", "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &lep1_Zmm);  // lepton 4-vector (tag lepton)
   outTree_Zmm->Branch("lep2", "ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<double> >", &lep2_Zmm);  // lepton 4-vector (probe lepton)
@@ -323,30 +360,15 @@ selectZmm::beginJob()
   outTree_Zmm->Branch("isLooseMuon2",  &isLooseMuon2_Zmm, "isLooseMuon2/I");  // probe lepton loose muon ID
   outTree_Zmm->Branch("isSoftMuon2",   &isSoftMuon2_Zmm,  "isSoftMuon2/I");   // probe lepton soft muon ID
   outTree_Zmm->Branch("isTightMuon2",  &isTightMuon2_Zmm, "isTightMuon2/I");  // probe lepton tight muon ID
+  outTree_Zmm->Branch("passSingleMuTrigger", &passSingleMuTrigger_Zmm, "passSingleMuTrigger/I"); // single muon trigger
+  outTree_Zmm->Branch("matchTrigObj1", &matchTrigObj1_Zmm,  "matchTrigObj1/I"); // tag lepton match to trigger object
+  outTree_Zmm->Branch("matchTrigObj2", &matchTrigObj2_Zmm,  "matchTrigObj2/I"); // probe lepton match to trigger object
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
 void 
 selectZmm::endJob() 
 {
-   // The only information in the last entry of the output tree
-   // is the total number of MC events processed
-   nEvents_Zmm = eventCounter_Zmm;
-   // Set everything else to zero
-   matchGen_Zmm=0; npv_Zmm=0;
-   genVPdgID_Zmm=0; genVPt_Zmm=0; genVPhi_Zmm=0; genVy_Zmm=0; genVMass_Zmm=0;
-   rawpfmet_Zmm=0; rawpfmetPhi_Zmm=0;
-   type1pfmet_Zmm=0; type1pfmetPhi_Zmm=0;
-   genmet_Zmm=0; genmetPhi_Zmm=0;
-   u1_Zmm=0; u2_Zmm=0;
-   q1_Zmm=0; q2_Zmm=0;
-   pfChIso1_Zmm=0; pfChIso2_Zmm=0;
-   dilep_Zmm=0; lep1_Zmm=0; lep2_Zmm=0;
-   isLooseMuon1_Zmm=0; isSoftMuon1_Zmm=0; isTightMuon1_Zmm=0;
-   isLooseMuon2_Zmm=0; isSoftMuon2_Zmm=0; isTightMuon2_Zmm=0;
-
-   outTree_Zmm->Fill();
-
    // Save tree in output file
    outFile_Zmm->Write();
    outFile_Zmm->Close();
